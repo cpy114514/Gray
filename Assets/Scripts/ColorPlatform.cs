@@ -13,6 +13,7 @@ public enum PlatformColorType
 public class ColorPlatform : MonoBehaviour
 {
     private static readonly List<ColorPlatform> Platforms = new List<ColorPlatform>();
+    private static readonly Dictionary<Collider2D, ColorPlatform> PlatformByCollider = new Dictionary<Collider2D, ColorPlatform>();
 
     [SerializeField] private PlatformColorType platformColor = PlatformColorType.White;
     [SerializeField] private PhysicsMaterial2D surfaceMaterial;
@@ -47,6 +48,7 @@ public class ColorPlatform : MonoBehaviour
     private void OnDisable()
     {
         Platforms.Remove(this);
+        UnregisterColliders();
     }
 
     private void OnValidate()
@@ -128,6 +130,17 @@ public class ColorPlatform : MonoBehaviour
         return false;
     }
 
+    public static bool TryGetPlatformForCollider(Collider2D platformCollider, out ColorPlatform platform)
+    {
+        if (platformCollider == null)
+        {
+            platform = null;
+            return false;
+        }
+
+        return PlatformByCollider.TryGetValue(platformCollider, out platform);
+    }
+
     private void RefreshForActivePlayers()
     {
         IReadOnlyList<PlayerController2D> players = PlayerController2D.Players;
@@ -202,7 +215,33 @@ public class ColorPlatform : MonoBehaviour
 
     private void CacheColliders()
     {
+        UnregisterColliders();
         platformColliders = GetComponentsInChildren<Collider2D>();
+        foreach (Collider2D platformCollider in platformColliders)
+        {
+            if (platformCollider != null)
+            {
+                PlatformByCollider[platformCollider] = this;
+            }
+        }
+    }
+
+    private void UnregisterColliders()
+    {
+        if (platformColliders == null)
+        {
+            return;
+        }
+
+        foreach (Collider2D platformCollider in platformColliders)
+        {
+            if (platformCollider != null
+                && PlatformByCollider.TryGetValue(platformCollider, out ColorPlatform platform)
+                && platform == this)
+            {
+                PlatformByCollider.Remove(platformCollider);
+            }
+        }
     }
 
     private void CacheVisualComponents()

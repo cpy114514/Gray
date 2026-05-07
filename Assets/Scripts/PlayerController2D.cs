@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 public enum PlayerColorState
@@ -7,12 +8,20 @@ public enum PlayerColorState
     Black
 }
 
+public enum PlayerJumpType
+{
+    Ground,
+    Air,
+    Wall
+}
+
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(Collider2D))]
 [RequireComponent(typeof(SpriteRenderer))]
 public class PlayerController2D : MonoBehaviour
 {
     private const int GroundHitBufferSize = 8;
+    private const int WallHitBufferSize = 4;
     private static readonly List<PlayerController2D> ActivePlayers = new List<PlayerController2D>();
 
     [Header("Run")]
@@ -24,11 +33,21 @@ public class PlayerController2D : MonoBehaviour
 
     [Header("Jump")]
     [SerializeField] private float jumpVelocity = 13.5f;
+    [SerializeField] private int maxAirJumps = 1;
     [SerializeField] private float coyoteTime = 0.08f;
     [SerializeField] private float jumpBufferTime = 0.1f;
     [SerializeField] private float jumpCutMultiplier = 0.45f;
     [SerializeField] private float jumpGroundLockout = 0.08f;
     [SerializeField] private float jumpLiftOffset = 0.025f;
+
+    [Header("Wall Jump")]
+    [SerializeField] private Vector2 wallCheckSize = new Vector2(0.12f, 1.05f);
+    [SerializeField] private float wallCheckDistance = 0.12f;
+    [SerializeField] private float wallJumpHorizontalVelocity = 7.2f;
+    [SerializeField] private float wallJumpVerticalVelocity = 12.8f;
+    [SerializeField] private float wallJumpPushOff = 0.08f;
+    [SerializeField] private float wallSlideMaxFallSpeed = 4.5f;
+    [SerializeField] private float wallJumpLockTime = 0.12f;
 
     [Header("Gravity")]
     [SerializeField] private float upwardGravityScale = 3.2f;
@@ -64,11 +83,17 @@ public class PlayerController2D : MonoBehaviour
     private Rigidbody2D body;
     private Collider2D mainCollider;
     private SpriteRenderer spriteRenderer;
+    private Camera mainCamera;
     private Collider2D[] playerColliders;
     private readonly RaycastHit2D[] groundHits = new RaycastHit2D[GroundHitBufferSize];
+    private readonly RaycastHit2D[] wallHits = new RaycastHit2D[WallHitBufferSize];
     private Vector2 spawnPosition;
     private PlayerColorState spawnColor;
     private bool isGrounded;
+    private bool isOnWall;
+    private bool isWallSliding;
+    private int wallSide;
+    private int airJumpsRemaining;
     private bool controlEnabled = true;
     private int grayDoorTouchCount;
     private float moveInput;
@@ -76,24 +101,31 @@ public class PlayerController2D : MonoBehaviour
     private float jumpBufferCounter;
     private float groundLockoutCounter;
     private float grayDoorExitGraceCounter;
+    private float wallJumpLockCounter;
     private bool jumpHeld;
     private bool jumpCutQueued;
+    private bool hasLastBackgroundColor;
+    private PlatformColorType lastBackgroundColor;
 
     public PlayerColorState CurrentColor => currentColor;
     public Collider2D[] PlayerColliders => playerColliders;
     public bool IsTouchingGrayDoor => grayDoorTouchCount > 0;
     public bool IsInGrayDoorGroundTransition => grayDoorTouchCount > 0 || grayDoorExitGraceCounter > 0f;
     public bool IsGrounded => isGrounded;
+    public bool IsOnWall => isOnWall;
+    public bool IsWallSliding => isWallSliding;
     public float MoveInput => moveInput;
     public Vector2 Velocity => body != null ? body.velocity : Vector2.zero;
     public bool ControlsEnabled => controlEnabled;
     public static IReadOnlyList<PlayerController2D> Players => ActivePlayers;
+    public event Action<PlayerJumpType, Vector2> Jumped;
 
     private void Awake()
     {
         body = GetComponent<Rigidbody2D>();
         mainCollider = GetComponent<Collider2D>();
         spriteRenderer = GetComponent<SpriteRenderer>();
+        mainCamera = Camera.main;
 
         spawnPosition = spawnPoint != null ? spawnPoint.position : transform.position;
         spawnColor = currentColor;
@@ -142,6 +174,8 @@ public class PlayerController2D : MonoBehaviour
             isGrounded = CheckGrounded();
         }
 
+        UpdateWallState();
+        UpdateWallTimers();
         UpdateGroundTimers();
 
         if (!controlEnabled)
@@ -194,6 +228,12 @@ public class PlayerController2D : MonoBehaviour
         transform.position = spawnPosition;
         grayDoorTouchCount = 0;
         grayDoorExitGraceCounter = 0f;
+        hasLastBackgroundColor = false;
+        wallJumpLockCounter = 0f;
+        isOnWall = false;
+        isWallSliding = false;
+        wallSide = 0;
+        airJumpsRemaining = maxAirJumps;
         coyoteCounter = 0f;
         jumpBufferCounter = 0f;
         groundLockoutCounter = 0f;
@@ -238,7 +278,6 @@ public class PlayerController2D : MonoBehaviour
     {
         if (currentColor == newState)
         {
-            UpdateVisualColor();
             return;
         }
 
@@ -291,6 +330,7 @@ public class PlayerController2D : MonoBehaviour
         if (isGrounded)
         {
             coyoteCounter = coyoteTime;
+            airJumpsRemaining = maxAirJumps;
         }
         else
         {
@@ -307,6 +347,38 @@ public class PlayerController2D : MonoBehaviour
                 ColorPlatform.RefreshAllForPlayer(this);
             }
         }
+    }
+
+    private void UpdateWallState()
+    {
+        if (isGrounded || wallJumpLockCounter > 0f)
+        {
+            isOnWall = false;
+            isWallSliding = false;
+            wallSide = 0;
+            return;
+        }
+
+        int leftWall = CheckWall(-1);
+        int rightWall = CheckWall(1);
+
+        if (leftWall != 0)
+        {
+            isOnWall = true;
+            wallSide = -1;
+        }
+        else if (rightWall != 0)
+        {
+            isOnWall = true;
+            wallSide = 1;
+        }
+        else
+        {
+            isOnWall = false;
+            wallSide = 0;
+        }
+
+        isWallSliding = isOnWall && body.velocity.y < 0f && Mathf.Abs(moveInput) > 0.1f && Mathf.Sign(moveInput) == wallSide;
     }
 
     private void ApplyHorizontalMovement()
@@ -329,17 +401,52 @@ public class PlayerController2D : MonoBehaviour
 
     private void TryJump()
     {
-        if (jumpBufferCounter <= 0f || coyoteCounter <= 0f)
+        if (jumpBufferCounter <= 0f)
         {
             return;
         }
+
+        if (isOnWall && !isGrounded && wallJumpLockCounter <= 0f)
+        {
+            float pushDirection = wallSide != 0
+                ? -wallSide
+                : -Mathf.Sign(moveInput != 0f ? moveInput : body.velocity.x);
+
+            if (Mathf.Approximately(pushDirection, 0f))
+            {
+                pushDirection = 1f;
+            }
+
+            body.velocity = new Vector2(pushDirection * wallJumpHorizontalVelocity, wallJumpVerticalVelocity);
+            body.position += Vector2.right * pushDirection * wallJumpPushOff;
+            jumpBufferCounter = 0f;
+            coyoteCounter = 0f;
+            airJumpsRemaining = maxAirJumps;
+            groundLockoutCounter = jumpGroundLockout;
+            wallJumpLockCounter = wallJumpLockTime;
+            jumpCutQueued = false;
+            Jumped?.Invoke(PlayerJumpType.Wall, new Vector2(pushDirection, 1f));
+            return;
+        }
+
+        if (coyoteCounter <= 0f && airJumpsRemaining <= 0)
+        {
+            return;
+        }
+
+        bool usedAirJump = coyoteCounter <= 0f;
 
         body.velocity = new Vector2(body.velocity.x, jumpVelocity);
         body.position += Vector2.up * jumpLiftOffset;
         jumpBufferCounter = 0f;
         coyoteCounter = 0f;
+        if (usedAirJump)
+        {
+            airJumpsRemaining--;
+        }
         groundLockoutCounter = jumpGroundLockout;
         jumpCutQueued = false;
+        Jumped?.Invoke(usedAirJump ? PlayerJumpType.Air : PlayerJumpType.Ground, Vector2.up);
     }
 
     private void ApplyJumpCut()
@@ -363,9 +470,55 @@ public class PlayerController2D : MonoBehaviour
             ? upwardGravityScale
             : fallGravityScale;
 
+        if (isWallSliding && body.velocity.y < -wallSlideMaxFallSpeed)
+        {
+            body.velocity = new Vector2(body.velocity.x, -wallSlideMaxFallSpeed);
+        }
+
         if (body.velocity.y < -maxFallSpeed)
         {
             body.velocity = new Vector2(body.velocity.x, -maxFallSpeed);
+        }
+    }
+
+    private int CheckWall(int direction)
+    {
+        Bounds bounds = mainCollider.bounds;
+        Vector2 origin = new Vector2(bounds.center.x, bounds.center.y);
+        origin.x += direction * (bounds.extents.x - wallCheckDistance * 0.5f);
+
+        int hitCount = Physics2D.BoxCastNonAlloc(
+            origin,
+            wallCheckSize,
+            0f,
+            new Vector2(direction, 0f),
+            wallHits,
+            wallCheckDistance,
+            groundMask);
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            RaycastHit2D hit = wallHits[i];
+            if (hit.collider == null || hit.collider == mainCollider || hit.collider.isTrigger)
+            {
+                continue;
+            }
+
+            ColorPlatform.TryGetPlatformForCollider(hit.collider, out ColorPlatform platform);
+            if (platform == null || platform.CanPlayerCollide(this))
+            {
+                return direction;
+            }
+        }
+
+        return 0;
+    }
+
+    private void UpdateWallTimers()
+    {
+        if (wallJumpLockCounter > 0f)
+        {
+            wallJumpLockCounter -= Time.deltaTime;
         }
     }
 
@@ -393,7 +546,7 @@ public class PlayerController2D : MonoBehaviour
                 continue;
             }
 
-            ColorPlatform platform = hit.collider.GetComponentInParent<ColorPlatform>();
+            ColorPlatform.TryGetPlatformForCollider(hit.collider, out ColorPlatform platform);
             if (platform == null || platform.CanPlayerCollide(this))
             {
                 return true;
@@ -455,12 +608,22 @@ public class PlayerController2D : MonoBehaviour
             ? whiteStateColor
             : blackStateColor;
 
-        if (!updateCameraBackground || Camera.main == null)
+        if (!updateCameraBackground)
         {
             return;
         }
 
-        Camera.main.backgroundColor = currentColor == PlayerColorState.White
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+        }
+
+        if (mainCamera == null)
+        {
+            return;
+        }
+
+        mainCamera.backgroundColor = currentColor == PlayerColorState.White
             ? whiteGroundBackground
             : blackGroundBackground;
     }
@@ -473,6 +636,7 @@ public class PlayerController2D : MonoBehaviour
 
         if (!ColorPlatform.TryGetColorAtWorldPosition(samplePosition, out PlatformColorType backgroundColor))
         {
+            hasLastBackgroundColor = false;
             return;
         }
 
@@ -486,6 +650,14 @@ public class PlayerController2D : MonoBehaviour
                 ? PlayerColorState.Black
                 : PlayerColorState.White;
         }
+
+        if (hasLastBackgroundColor && lastBackgroundColor == backgroundColor && currentColor == targetColor)
+        {
+            return;
+        }
+
+        hasLastBackgroundColor = true;
+        lastBackgroundColor = backgroundColor;
 
         SetColorState(targetColor);
     }

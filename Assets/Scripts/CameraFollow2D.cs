@@ -8,13 +8,13 @@ public class CameraFollow2D : MonoBehaviour
     [SerializeField] private bool autoFindPlayer = true;
 
     [Header("Follow")]
-    [SerializeField] private Vector2 offset = new Vector2(1.5f, 0.75f);
+    [SerializeField] private Vector2 offset = Vector2.zero;
     [SerializeField] private float smoothTime = 0.18f;
-    [SerializeField] private float lookAheadDistance = 1.2f;
+    [SerializeField] private float lookAheadDistance = 0f;
     [SerializeField] private float lookAheadSpeed = 3f;
 
     [Header("Dead Zone")]
-    [SerializeField] private Vector2 deadZone = new Vector2(0.35f, 0.2f);
+    [SerializeField] private Vector2 deadZone = new Vector2(0.05f, 0.05f);
 
     [Header("Bounds")]
     [SerializeField] private bool useBounds;

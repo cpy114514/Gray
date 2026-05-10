@@ -6,19 +6,49 @@ using UnityEngine.Tilemaps;
 public static class TilemapSetupTool
 {
     private const string NoFrictionMaterialPath = "Assets/Physics/NoFriction.physicsMaterial2D";
+    private const string BlackTilePath = "Assets/Tiles/Prototype/BlackBlock.asset";
+    private const string LevelGridPrefabPath = "Assets/Prefabs/LevelGrid.prefab";
 
     [MenuItem("Tools/Gray/Create Color Tilemaps In Current Scene")]
     public static void CreateColorTilemapsInCurrentScene()
     {
         Grid grid = FindOrCreateGrid();
         PhysicsMaterial2D surfaceMaterial = AssetDatabase.LoadAssetAtPath<PhysicsMaterial2D>(NoFrictionMaterialPath);
+        TileBase blackTile = AssetDatabase.LoadAssetAtPath<TileBase>(BlackTilePath);
 
-        CreateOrUpdateTilemap(grid.transform, "WhiteTilemap", PlatformColorType.White, surfaceMaterial);
-        CreateOrUpdateTilemap(grid.transform, "BlackTilemap", PlatformColorType.Black, surfaceMaterial);
-        CreateOrUpdateTilemap(grid.transform, "GrayTilemap", PlatformColorType.Gray, surfaceMaterial);
+        Tilemap whiteTilemap = CreateOrUpdateColorTilemap(grid.transform, "WhiteTilemap", PlatformColorType.White, surfaceMaterial);
+        Tilemap blackTilemap = CreateOrUpdateBlackTilemap(grid.transform, whiteTilemap, blackTile, surfaceMaterial);
+        CreateOrUpdateSpikeTilemap(grid.transform, blackTilemap);
 
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-        Debug.Log("Color tilemaps are ready. Use Window > 2D > Tile Palette and paint on WhiteTilemap, BlackTilemap, or GrayTilemap.");
+        Debug.Log("Level Grid is ready. Paint blocks on WhiteTilemap and spikes on SpikeTilemap under the same Grid.");
+    }
+
+    [MenuItem("Tools/Gray/Save Current Grid As LevelGrid Prefab")]
+    public static void SaveCurrentGridAsPrefab()
+    {
+        Grid grid = Object.FindObjectOfType<Grid>();
+        if (grid == null)
+        {
+            CreateColorTilemapsInCurrentScene();
+            grid = Object.FindObjectOfType<Grid>();
+        }
+
+        if (grid == null)
+        {
+            Debug.LogError("Could not find or create a Grid.");
+            return;
+        }
+
+        string folder = System.IO.Path.GetDirectoryName(LevelGridPrefabPath);
+        if (!AssetDatabase.IsValidFolder(folder))
+        {
+            AssetDatabase.CreateFolder("Assets", "Prefabs");
+        }
+
+        PrefabUtility.SaveAsPrefabAssetAndConnect(grid.gameObject, LevelGridPrefabPath, InteractionMode.UserAction);
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        Debug.Log($"Saved whole Grid prefab: {LevelGridPrefabPath}");
     }
 
     private static Grid FindOrCreateGrid()
@@ -34,7 +64,7 @@ public static class TilemapSetupTool
         return gridObject.AddComponent<Grid>();
     }
 
-    private static void CreateOrUpdateTilemap(Transform parent, string name, PlatformColorType platformColor, PhysicsMaterial2D surfaceMaterial)
+    private static Tilemap CreateOrUpdateColorTilemap(Transform parent, string name, PlatformColorType platformColor, PhysicsMaterial2D surfaceMaterial)
     {
         Transform existing = parent.Find(name);
         GameObject tilemapObject = existing != null ? existing.gameObject : new GameObject(name);
@@ -68,6 +98,60 @@ public static class TilemapSetupTool
         EditorUtility.SetDirty(body);
         EditorUtility.SetDirty(compositeCollider);
         EditorUtility.SetDirty(colorPlatform);
+
+        return tilemap;
+    }
+
+    private static Tilemap CreateOrUpdateBlackTilemap(
+        Transform parent,
+        Tilemap whiteTilemap,
+        TileBase blackTile,
+        PhysicsMaterial2D surfaceMaterial)
+    {
+        Tilemap blackTilemap = CreateOrUpdateColorTilemap(parent, "BlackTilemap", PlatformColorType.Black, surfaceMaterial);
+        AutoBlackTilemap autoBlackTilemap = GetOrAdd<AutoBlackTilemap>(blackTilemap.gameObject);
+        autoBlackTilemap.Configure(whiteTilemap, blackTile);
+        EditorUtility.SetDirty(autoBlackTilemap);
+        return blackTilemap;
+    }
+
+    private static Tilemap CreateOrUpdateSpikeTilemap(Transform parent, Tilemap blackTilemap)
+    {
+        Transform existing = parent.Find("SpikeTilemap");
+        GameObject tilemapObject = existing != null ? existing.gameObject : new GameObject("SpikeTilemap");
+
+        if (existing == null)
+        {
+            Undo.RegisterCreatedObjectUndo(tilemapObject, "Create SpikeTilemap");
+            tilemapObject.transform.SetParent(parent);
+            tilemapObject.transform.localPosition = Vector3.zero;
+        }
+
+        Tilemap tilemap = GetOrAdd<Tilemap>(tilemapObject);
+        TilemapRenderer renderer = GetOrAdd<TilemapRenderer>(tilemapObject);
+        TilemapCollider2D tilemapCollider = GetOrAdd<TilemapCollider2D>(tilemapObject);
+        Rigidbody2D body = GetOrAdd<Rigidbody2D>(tilemapObject);
+        CompositeCollider2D compositeCollider = GetOrAdd<CompositeCollider2D>(tilemapObject);
+        SpikeTilemap spikeTilemap = GetOrAdd<SpikeTilemap>(tilemapObject);
+
+        body.bodyType = RigidbodyType2D.Static;
+        tilemapCollider.isTrigger = true;
+        tilemapCollider.usedByComposite = true;
+        compositeCollider.isTrigger = true;
+        renderer.sortingOrder = 10;
+        spikeTilemap.SetWhiteTilemap(parent.Find("WhiteTilemap") != null
+            ? parent.Find("WhiteTilemap").GetComponent<Tilemap>()
+            : null);
+        spikeTilemap.SetBlackTilemap(blackTilemap);
+
+        EditorUtility.SetDirty(tilemap);
+        EditorUtility.SetDirty(renderer);
+        EditorUtility.SetDirty(tilemapCollider);
+        EditorUtility.SetDirty(body);
+        EditorUtility.SetDirty(compositeCollider);
+        EditorUtility.SetDirty(spikeTilemap);
+
+        return tilemap;
     }
 
     private static T GetOrAdd<T>(GameObject gameObject) where T : Component

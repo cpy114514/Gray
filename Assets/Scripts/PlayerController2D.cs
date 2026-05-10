@@ -68,11 +68,13 @@ public class PlayerController2D : MonoBehaviour
     [SerializeField] private PlayerColorState currentColor = PlayerColorState.White;
     [SerializeField] private Color whiteStateColor = Color.white;
     [SerializeField] private Color blackStateColor = Color.black;
-    [SerializeField] private bool updateCameraBackground = true;
+    [SerializeField] private bool invertVisualColor = true;
+    [SerializeField] private bool updateCameraBackground = false;
     [SerializeField] private Color whiteGroundBackground = Color.black;
     [SerializeField] private Color blackGroundBackground = Color.white;
     [SerializeField] private Transform backgroundColorSamplePoint;
-    [SerializeField] private bool invertBackgroundColor = true;
+    [SerializeField] private bool invertBackgroundColor;
+    [SerializeField] private float backgroundColorSampleInterval = 0.04f;
 
     [Header("Gray Door")]
     [SerializeField] private float grayDoorExitGraceTime = 0.35f;
@@ -106,8 +108,11 @@ public class PlayerController2D : MonoBehaviour
     private bool jumpCutQueued;
     private bool hasLastBackgroundColor;
     private PlatformColorType lastBackgroundColor;
+    private float backgroundColorSampleTimer;
+    private Color currentVisualColor;
 
     public PlayerColorState CurrentColor => currentColor;
+    public Color VisualColor => currentVisualColor;
     public Collider2D[] PlayerColliders => playerColliders;
     public bool IsTouchingGrayDoor => grayDoorTouchCount > 0;
     public bool IsInGrayDoorGroundTransition => grayDoorTouchCount > 0 || grayDoorExitGraceCounter > 0f;
@@ -229,6 +234,7 @@ public class PlayerController2D : MonoBehaviour
         grayDoorTouchCount = 0;
         grayDoorExitGraceCounter = 0f;
         hasLastBackgroundColor = false;
+        backgroundColorSampleTimer = 0f;
         wallJumpLockCounter = 0f;
         isOnWall = false;
         isWallSliding = false;
@@ -604,9 +610,18 @@ public class PlayerController2D : MonoBehaviour
 
     private void UpdateVisualColor()
     {
-        spriteRenderer.color = currentColor == PlayerColorState.White
+        PlayerColorState visualColor = currentColor;
+        if (invertVisualColor)
+        {
+            visualColor = currentColor == PlayerColorState.White
+                ? PlayerColorState.Black
+                : PlayerColorState.White;
+        }
+
+        currentVisualColor = visualColor == PlayerColorState.White
             ? whiteStateColor
             : blackStateColor;
+        spriteRenderer.color = currentVisualColor;
 
         if (!updateCameraBackground)
         {
@@ -630,6 +645,17 @@ public class PlayerController2D : MonoBehaviour
 
     private void ApplyColorFromBackground()
     {
+        if (backgroundColorSampleInterval > 0f)
+        {
+            backgroundColorSampleTimer -= Time.deltaTime;
+            if (backgroundColorSampleTimer > 0f)
+            {
+                return;
+            }
+
+            backgroundColorSampleTimer = backgroundColorSampleInterval;
+        }
+
         Vector3 samplePosition = backgroundColorSamplePoint != null
             ? backgroundColorSamplePoint.position
             : mainCollider.bounds.center;

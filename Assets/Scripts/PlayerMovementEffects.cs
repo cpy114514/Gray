@@ -24,37 +24,41 @@ public class PlayerMovementEffects : MonoBehaviour
 
     [Header("Dust")]
     [SerializeField] private Color dustColor = new Color(0.85f, 0.85f, 0.85f, 0.75f);
-    [SerializeField] private float runDustInterval = 0.08f;
-    [SerializeField] private int landBurstCount = 4;
+    [SerializeField] private float runDustInterval = 0.07f;
+    [SerializeField] private int landBurstCount = 2;
     [SerializeField] private int jumpBurstCount = 6;
     [SerializeField] private int airJumpBurstCount = 10;
     [SerializeField] private int wallJumpBurstCount = 12;
-    [SerializeField] private int heavyLandBurstCount = 10;
-    [SerializeField] private int skidBurstCount = 4;
-    [SerializeField] private int turnBurstCount = 3;
+    [SerializeField] private int heavyLandBurstCount = 6;
+    [SerializeField] private int skidBurstCount = 5;
+    [SerializeField] private int turnBurstCount = 4;
     [SerializeField] private float feetOffset = 0.72f;
-    [SerializeField] private float hardLandThreshold = 5.5f;
-    [SerializeField] private float slamLandThreshold = 13f;
+    [SerializeField] private float hardLandThreshold = 10f;
+    [SerializeField] private float slamLandThreshold = 15f;
+    [SerializeField] private float hardLandMinFallDistance = 3f;
+    [SerializeField] private float slamLandMinFallDistance = 6f;
     [SerializeField] private float turnSpeedThreshold = 2.6f;
 
     [Header("Afterimages")]
     [SerializeField] private bool enableAfterimages = true;
     [SerializeField] private bool useBlockAfterimages = true;
-    [SerializeField] private int afterimagePoolSize = 6;
-    [SerializeField] private float afterimageSpawnInterval = 0.05f;
+    [SerializeField] private int afterimagePoolSize = 7;
+    [SerializeField] private float afterimageSpawnInterval = 0.045f;
     [SerializeField] private float afterimageLifetime = 0.22f;
     [SerializeField] private Vector2 fallbackAfterimageBlockSize = new Vector2(1f, 1f);
-    [SerializeField] private Color afterimageWhiteColor = new Color(1f, 1f, 1f, 0.3f);
-    [SerializeField] private Color afterimageBlackColor = new Color(0.08f, 0.08f, 0.08f, 0.3f);
+    [SerializeField] private float afterimageAlpha = 0.3f;
 
     [Header("Camera")]
     [SerializeField] private bool shakeCamera = true;
-    [SerializeField] private float landShakeStrength = 0.06f;
+    [SerializeField] private float effectShakeMultiplier = 1.12f;
+    [SerializeField] private float runShakeStrength = 0.008f;
+    [SerializeField] private float softLandShakeStrength = 0.014f;
+    [SerializeField] private float landShakeStrength = 0.035f;
     [SerializeField] private float slamShakeStrength = 0.08f;
-    [SerializeField] private float jumpShakeStrength = 0.03f;
-    [SerializeField] private float airJumpShakeStrength = 0.04f;
-    [SerializeField] private float wallJumpShakeStrength = 0.05f;
-    [SerializeField] private float turnShakeStrength = 0.02f;
+    [SerializeField] private float jumpShakeStrength = 0.05f;
+    [SerializeField] private float airJumpShakeStrength = 0.065f;
+    [SerializeField] private float wallJumpShakeStrength = 0.075f;
+    [SerializeField] private float turnShakeStrength = 0.035f;
     [SerializeField] private float shakeDuration = 0.08f;
 
     private PlayerController2D player;
@@ -62,17 +66,22 @@ public class PlayerMovementEffects : MonoBehaviour
     private Collider2D sourceCollider;
     private AfterimageSlot[] afterimages;
     private Transform afterimageRoot;
+    private Vector3 cachedBlockAfterimageScale;
     private bool wasGrounded;
     private float dustTimer;
     private float afterimageTimer;
     private float lastMoveInput;
     private float maxFallSpeedSinceAirborne;
+    private float highestYSinceAirborne;
+    private bool trackingAirborneHeight;
+    private int activeAfterimageCount;
 
     private void Awake()
     {
         player = GetComponent<PlayerController2D>();
         sourceRenderer = GetComponent<SpriteRenderer>();
         sourceCollider = GetComponent<Collider2D>();
+        cachedBlockAfterimageScale = CalculateBlockAfterimageScale();
         EnsureDustParticles();
         if (useMovementTrail)
         {
@@ -121,7 +130,8 @@ public class PlayerMovementEffects : MonoBehaviour
             dustTimer -= Time.deltaTime;
             if (dustTimer <= 0f)
             {
-                EmitDust(2, new Vector2(-Mathf.Sign(player.Velocity.x) * 1.4f, 1.2f));
+                EmitDust(1, new Vector2(-Mathf.Sign(player.Velocity.x) * 1.4f, 1.2f));
+                ShakeCamera(runShakeStrength);
                 dustTimer = runDustInterval;
             }
 
@@ -141,7 +151,11 @@ public class PlayerMovementEffects : MonoBehaviour
         if (!wasGrounded && grounded)
         {
             float landingSpeed = maxFallSpeedSinceAirborne;
-            if (landingSpeed >= slamLandThreshold)
+            float fallDistance = Mathf.Max(0f, highestYSinceAirborne - transform.position.y);
+            bool slamLanding = landingSpeed >= slamLandThreshold && fallDistance >= slamLandMinFallDistance;
+            bool hardLanding = landingSpeed >= hardLandThreshold && fallDistance >= hardLandMinFallDistance;
+
+            if (slamLanding)
             {
                 EmitLandingDust(heavyLandBurstCount);
                 EmitSlamDust(landingSpeed);
@@ -150,9 +164,16 @@ public class PlayerMovementEffects : MonoBehaviour
             }
             else
             {
-                EmitLandingDust(landBurstCount + (landingSpeed > hardLandThreshold ? 4 : 0));
-                SpawnAfterimage(landingSpeed > hardLandThreshold ? 2 : 1);
-                ShakeCamera(landShakeStrength * Mathf.Clamp01(landingSpeed / hardLandThreshold));
+                EmitLandingDust(landBurstCount + (hardLanding ? 2 : 0));
+                SpawnAfterimage(hardLanding ? 2 : 1);
+                if (hardLanding)
+                {
+                    ShakeCamera(landShakeStrength * Mathf.Clamp01(landingSpeed / slamLandThreshold));
+                }
+                else
+                {
+                    ShakeCamera(softLandShakeStrength * Mathf.Clamp01(landingSpeed / hardLandThreshold));
+                }
             }
         }
         if (grounded && Mathf.Abs(player.MoveInput) > 0.1f)
@@ -169,11 +190,20 @@ public class PlayerMovementEffects : MonoBehaviour
 
         if (!grounded)
         {
+            if (!trackingAirborneHeight)
+            {
+                trackingAirborneHeight = true;
+                highestYSinceAirborne = transform.position.y;
+            }
+
+            highestYSinceAirborne = Mathf.Max(highestYSinceAirborne, transform.position.y);
             maxFallSpeedSinceAirborne = Mathf.Max(maxFallSpeedSinceAirborne, -player.Velocity.y);
         }
         else if (!wasGrounded)
         {
             maxFallSpeedSinceAirborne = 0f;
+            trackingAirborneHeight = false;
+            highestYSinceAirborne = transform.position.y;
         }
 
         wasGrounded = grounded;
@@ -182,7 +212,10 @@ public class PlayerMovementEffects : MonoBehaviour
         {
             UpdateTrailColor();
         }
-        UpdateAfterimages();
+        if (activeAfterimageCount > 0)
+        {
+            UpdateAfterimages();
+        }
     }
 
     private void OnPlayerJumped(PlayerJumpType jumpType, Vector2 direction)
@@ -265,7 +298,7 @@ public class PlayerMovementEffects : MonoBehaviour
 
         Vector3 feetPosition = transform.position + Vector3.down * feetOffset;
         float strength = Mathf.Clamp01(landingSpeed / (slamLandThreshold * 1.6f));
-        int count = Mathf.RoundToInt(Mathf.Lerp(4, 10, strength));
+        int count = Mathf.RoundToInt(Mathf.Lerp(3, 6, strength));
 
         for (int i = 0; i < count; i++)
         {
@@ -348,6 +381,7 @@ public class PlayerMovementEffects : MonoBehaviour
                 continue;
             }
 
+            bool wasActive = slot.Active;
             slot.Renderer.sprite = useBlockAfterimages ? GetRuntimeBlockSprite() : sourceRenderer.sprite;
             slot.Renderer.flipX = sourceRenderer.flipX;
             slot.Renderer.flipY = sourceRenderer.flipY;
@@ -355,7 +389,7 @@ public class PlayerMovementEffects : MonoBehaviour
             slot.Renderer.sortingOrder = sourceRenderer.sortingOrder - 1;
             slot.Renderer.transform.position = transform.position;
             slot.Renderer.transform.rotation = useBlockAfterimages ? Quaternion.identity : transform.rotation;
-            slot.Renderer.transform.localScale = useBlockAfterimages ? GetBlockAfterimageScale() : transform.localScale;
+            slot.Renderer.transform.localScale = useBlockAfterimages ? cachedBlockAfterimageScale : transform.localScale;
             slot.Renderer.sharedMaterial = sourceRenderer.sharedMaterial;
             slot.Renderer.enabled = true;
             slot.Active = true;
@@ -363,10 +397,15 @@ public class PlayerMovementEffects : MonoBehaviour
             slot.RemainingTime = afterimageLifetime;
             slot.Renderer.color = GetAfterimageColor();
             afterimages[slotIndex] = slot;
+
+            if (!wasActive)
+            {
+                activeAfterimageCount++;
+            }
         }
     }
 
-    private Vector3 GetBlockAfterimageScale()
+    private Vector3 CalculateBlockAfterimageScale()
     {
         if (sourceCollider == null)
         {
@@ -483,6 +522,8 @@ public class PlayerMovementEffects : MonoBehaviour
                 Active = false
             };
         }
+
+        activeAfterimageCount = 0;
     }
 
     private void EnsureCameraFollow()
@@ -608,6 +649,7 @@ public class PlayerMovementEffects : MonoBehaviour
                 slot.Active = false;
                 slot.Renderer.enabled = false;
                 afterimages[i] = slot;
+                activeAfterimageCount = Mathf.Max(0, activeAfterimageCount - 1);
                 continue;
             }
 
@@ -645,9 +687,9 @@ public class PlayerMovementEffects : MonoBehaviour
 
     private Color GetAfterimageColor()
     {
-        return player.CurrentColor == PlayerColorState.White
-            ? afterimageWhiteColor
-            : afterimageBlackColor;
+        Color color = player.VisualColor;
+        color.a = afterimageAlpha;
+        return color;
     }
 
     private void ShakeCamera(float strength)
@@ -657,16 +699,13 @@ public class PlayerMovementEffects : MonoBehaviour
             return;
         }
 
-        cameraFollow.Shake(shakeDuration, strength);
+        cameraFollow.Shake(shakeDuration, strength * effectShakeMultiplier);
     }
 
     private Color GetStateDustColor()
     {
-        if (player.CurrentColor == PlayerColorState.White)
-        {
-            return dustColor;
-        }
-
-        return new Color(0.12f, 0.12f, 0.12f, 0.65f);
+        Color color = player.VisualColor;
+        color.a = dustColor.a;
+        return color;
     }
 }

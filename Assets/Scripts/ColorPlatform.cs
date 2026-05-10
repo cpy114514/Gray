@@ -14,9 +14,17 @@ public class ColorPlatform : MonoBehaviour
 {
     private static readonly List<ColorPlatform> Platforms = new List<ColorPlatform>();
     private static readonly Dictionary<Collider2D, ColorPlatform> PlatformByCollider = new Dictionary<Collider2D, ColorPlatform>();
+    private static ColorPlatform[] scenePlatformCache = new ColorPlatform[0];
+    private static int scenePlatformCacheFrame = -1;
+    private static float scenePlatformCacheTime = -1f;
+    private const float ScenePlatformCacheDuration = 0.1f;
 
     [SerializeField] private PlatformColorType platformColor = PlatformColorType.White;
     [SerializeField] private PhysicsMaterial2D surfaceMaterial;
+    [SerializeField] private Color whiteVisualColor = Color.white;
+    [SerializeField] private Color blackVisualColor = Color.black;
+    [SerializeField] private Color grayVisualColor = Color.gray;
+    [SerializeField] private bool boundaryCollisionMode;
 
     private Collider2D[] platformColliders;
     private Tilemap tilemap;
@@ -68,12 +76,12 @@ public class ColorPlatform : MonoBehaviour
 
         if (player.IsTouchingGrayDoor)
         {
-            return platformColor == PlatformColorType.Gray;
+            return false;
         }
 
         if (player.IsInGrayDoorGroundTransition)
         {
-            return true;
+            return false;
         }
 
         if (platformColor == PlatformColorType.Gray)
@@ -111,22 +119,94 @@ public class ColorPlatform : MonoBehaviour
 
     public static bool TryGetColorAtWorldPosition(Vector3 worldPosition, out PlatformColorType color)
     {
+        if (TryGetExplicitColorAtWorldPosition(worldPosition, out color))
+        {
+            return true;
+        }
+
+        color = PlatformColorType.Black;
+        return true;
+    }
+
+    public static bool TryGetExplicitColorAtWorldPosition(Vector3 worldPosition, out PlatformColorType color)
+    {
+        if (TryGetColorFromRegisteredPlatforms(worldPosition, out color))
+        {
+            return true;
+        }
+
+        bool needsSceneScan = Platforms.Count == 0 || !Application.isPlaying;
+        if (needsSceneScan && TryGetColorFromScenePlatforms(worldPosition, out color))
+        {
+            return true;
+        }
+
+        color = PlatformColorType.Black;
+        return false;
+    }
+
+    private static bool TryGetColorFromRegisteredPlatforms(Vector3 worldPosition, out PlatformColorType color)
+    {
         for (int i = Platforms.Count - 1; i >= 0; i--)
         {
             ColorPlatform platform = Platforms[i];
-            if (platform == null || platform.platformColor == PlatformColorType.Gray)
+            if (TryGetColorFromPlatform(platform, worldPosition, out color))
             {
-                continue;
-            }
-
-            if (platform.ContainsWorldPosition(worldPosition))
-            {
-                color = platform.platformColor;
                 return true;
             }
         }
 
-        color = PlatformColorType.Gray;
+        color = PlatformColorType.Black;
+        return false;
+    }
+
+    private static bool TryGetColorFromScenePlatforms(Vector3 worldPosition, out PlatformColorType color)
+    {
+        ColorPlatform[] scenePlatforms = GetScenePlatformCache();
+        for (int i = scenePlatforms.Length - 1; i >= 0; i--)
+        {
+            if (TryGetColorFromPlatform(scenePlatforms[i], worldPosition, out color))
+            {
+                return true;
+            }
+        }
+
+        color = PlatformColorType.Black;
+        return false;
+    }
+
+    private static ColorPlatform[] GetScenePlatformCache()
+    {
+        int currentFrame = Time.frameCount;
+        float currentTime = Time.realtimeSinceStartup;
+        bool cacheExpired = scenePlatformCacheFrame != currentFrame
+            && currentTime - scenePlatformCacheTime >= ScenePlatformCacheDuration;
+
+        if (scenePlatformCache == null || cacheExpired)
+        {
+            scenePlatformCache = FindObjectsOfType<ColorPlatform>(true);
+            scenePlatformCacheFrame = currentFrame;
+            scenePlatformCacheTime = currentTime;
+        }
+
+        return scenePlatformCache;
+    }
+
+    private static bool TryGetColorFromPlatform(ColorPlatform platform, Vector3 worldPosition, out PlatformColorType color)
+    {
+        if (platform == null || platform.platformColor == PlatformColorType.Gray)
+        {
+            color = PlatformColorType.Black;
+            return false;
+        }
+
+        if (platform.ContainsWorldPosition(worldPosition))
+        {
+            color = platform.platformColor;
+            return true;
+        }
+
+        color = PlatformColorType.Black;
         return false;
     }
 
@@ -185,9 +265,9 @@ public class ColorPlatform : MonoBehaviour
     {
         Color color = platformColor switch
         {
-            PlatformColorType.White => Color.white,
-            PlatformColorType.Black => Color.black,
-            _ => Color.gray
+            PlatformColorType.White => whiteVisualColor,
+            PlatformColorType.Black => blackVisualColor,
+            _ => grayVisualColor
         };
 
         if (spriteRenderer != null)

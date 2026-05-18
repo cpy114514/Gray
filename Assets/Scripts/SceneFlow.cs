@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using System.IO;
 
 public class SceneFlow : MonoBehaviour
 {
@@ -30,6 +31,23 @@ public class SceneFlow : MonoBehaviour
         return buildIndex >= FirstGameplayBuildIndex &&
                buildIndex < SceneManager.sceneCountInBuildSettings &&
                buildIndex <= GetHighestUnlockedLevel();
+    }
+
+    public static string GetLevelDisplayName(int buildIndex)
+    {
+        if (buildIndex < 0 || buildIndex >= SceneManager.sceneCountInBuildSettings)
+        {
+            return $"LEVEL {Mathf.Max(1, buildIndex - FirstGameplayBuildIndex + 1)}";
+        }
+
+        string scenePath = SceneUtility.GetScenePathByBuildIndex(buildIndex);
+        string sceneName = Path.GetFileNameWithoutExtension(scenePath);
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            return $"LEVEL {Mathf.Max(1, buildIndex - FirstGameplayBuildIndex + 1)}";
+        }
+
+        return sceneName;
     }
 
     public static void UnlockLevel(int buildIndex)

@@ -9,24 +9,20 @@ public enum PlatformColorType
     Gray
 }
 
-[RequireComponent(typeof(Collider2D))]
+[DisallowMultipleComponent]
 public class ColorPlatform : MonoBehaviour
 {
     private static readonly List<ColorPlatform> Platforms = new List<ColorPlatform>();
     private static readonly Dictionary<Collider2D, ColorPlatform> PlatformByCollider = new Dictionary<Collider2D, ColorPlatform>();
-    private static ColorPlatform[] scenePlatformCache = new ColorPlatform[0];
-    private static int scenePlatformCacheFrame = -1;
-    private static float scenePlatformCacheTime = -1f;
-    private const float ScenePlatformCacheDuration = 0.1f;
 
     [SerializeField] private PlatformColorType platformColor = PlatformColorType.White;
     [SerializeField] private PhysicsMaterial2D surfaceMaterial;
     [SerializeField] private Color whiteVisualColor = Color.white;
     [SerializeField] private Color blackVisualColor = Color.black;
     [SerializeField] private Color grayVisualColor = Color.gray;
-    [SerializeField] private bool boundaryCollisionMode;
+    [SerializeField] private bool applyVisualColor = true;
 
-    private Collider2D[] platformColliders;
+    private Collider2D[] colliders;
     private Tilemap tilemap;
     private SpriteRenderer spriteRenderer;
 
@@ -34,22 +30,16 @@ public class ColorPlatform : MonoBehaviour
 
     private void Awake()
     {
-        ConfigureTilemapCollider();
-        CacheVisualComponents();
-        CacheColliders();
-        ApplyVisualColor();
-        ApplySurfaceMaterial();
+        Configure();
     }
 
     private void OnEnable()
     {
+        Configure();
         if (!Platforms.Contains(this))
         {
             Platforms.Add(this);
         }
-
-        CacheVisualComponents();
-        CacheColliders();
         RefreshForActivePlayers();
     }
 
@@ -61,20 +51,27 @@ public class ColorPlatform : MonoBehaviour
 
     private void OnValidate()
     {
-        CacheColliders();
-        CacheVisualComponents();
-        ApplyVisualColor();
-        ApplySurfaceMaterial();
+        CacheComponents();
+        ApplyVisual();
+        ApplyMaterial();
+    }
+
+    public void SetPlatformColor(PlatformColorType newColor)
+    {
+        platformColor = newColor;
+        ApplyVisual();
+        RefreshForActivePlayers();
+    }
+
+    public void SetSurfaceMaterial(PhysicsMaterial2D newSurfaceMaterial)
+    {
+        surfaceMaterial = newSurfaceMaterial;
+        ApplyMaterial();
     }
 
     public bool CanPlayerCollide(PlayerController2D player)
     {
         if (player == null)
-        {
-            return false;
-        }
-
-        if (player.IsTouchingGrayDoor)
         {
             return false;
         }
@@ -93,28 +90,29 @@ public class ColorPlatform : MonoBehaviour
             || (platformColor == PlatformColorType.Black && player.CurrentColor == PlayerColorState.Black);
     }
 
-    public void SetPlatformColor(PlatformColorType newColor)
-    {
-        platformColor = newColor;
-        ApplyVisualColor();
-        RefreshForActivePlayers();
-    }
-
-    public void SetSurfaceMaterial(PhysicsMaterial2D newSurfaceMaterial)
-    {
-        surfaceMaterial = newSurfaceMaterial;
-        ApplySurfaceMaterial();
-    }
-
     public static void RefreshAllForPlayer(PlayerController2D player)
     {
-        foreach (ColorPlatform platform in Platforms)
+        for (int i = Platforms.Count - 1; i >= 0; i--)
         {
-            if (platform != null)
+            if (Platforms[i] == null)
             {
-                platform.RefreshForPlayer(player);
+                Platforms.RemoveAt(i);
+                continue;
             }
+
+            Platforms[i].RefreshForPlayer(player);
         }
+    }
+
+    public static bool TryGetPlatformForCollider(Collider2D platformCollider, out ColorPlatform platform)
+    {
+        if (platformCollider == null)
+        {
+            platform = null;
+            return false;
+        }
+
+        return PlatformByCollider.TryGetValue(platformCollider, out platform);
     }
 
     public static bool TryGetColorAtWorldPosition(Vector3 worldPosition, out PlatformColorType color)
@@ -130,29 +128,40 @@ public class ColorPlatform : MonoBehaviour
 
     public static bool TryGetExplicitColorAtWorldPosition(Vector3 worldPosition, out PlatformColorType color)
     {
-        if (TryGetColorFromRegisteredPlatforms(worldPosition, out color))
-        {
-            return true;
-        }
-
-        bool needsSceneScan = Platforms.Count == 0 || !Application.isPlaying;
-        if (needsSceneScan && TryGetColorFromScenePlatforms(worldPosition, out color))
-        {
-            return true;
-        }
-
-        color = PlatformColorType.Black;
-        return false;
-    }
-
-    private static bool TryGetColorFromRegisteredPlatforms(Vector3 worldPosition, out PlatformColorType color)
-    {
         for (int i = Platforms.Count - 1; i >= 0; i--)
         {
             ColorPlatform platform = Platforms[i];
-            if (TryGetColorFromPlatform(platform, worldPosition, out color))
+            if (platform == null)
             {
+                Platforms.RemoveAt(i);
+                continue;
+            }
+
+            if (platform.platformColor == PlatformColorType.Gray)
+            {
+                continue;
+            }
+
+            if (platform.ContainsWorldPosition(worldPosition))
+            {
+                color = platform.platformColor;
                 return true;
+            }
+        }
+
+        if (!Application.isPlaying)
+        {
+            ColorPlatform[] scenePlatforms = FindObjectsOfType<ColorPlatform>(true);
+            for (int i = scenePlatforms.Length - 1; i >= 0; i--)
+            {
+                ColorPlatform platform = scenePlatforms[i];
+                if (platform != null
+                    && platform.platformColor != PlatformColorType.Gray
+                    && platform.ContainsWorldPosition(worldPosition))
+                {
+                    color = platform.platformColor;
+                    return true;
+                }
             }
         }
 
@@ -160,65 +169,51 @@ public class ColorPlatform : MonoBehaviour
         return false;
     }
 
-    private static bool TryGetColorFromScenePlatforms(Vector3 worldPosition, out PlatformColorType color)
+    private void Configure()
     {
-        ColorPlatform[] scenePlatforms = GetScenePlatformCache();
-        for (int i = scenePlatforms.Length - 1; i >= 0; i--)
+        CacheComponents();
+        ConfigureTilemapPhysics();
+        RegisterColliders();
+        ApplyMaterial();
+        ApplyVisual();
+    }
+
+    private void CacheComponents()
+    {
+        tilemap = GetComponent<Tilemap>();
+        spriteRenderer = GetComponent<SpriteRenderer>();
+    }
+
+    private void RegisterColliders()
+    {
+        UnregisterColliders();
+        colliders = GetComponentsInChildren<Collider2D>(true);
+        for (int i = 0; i < colliders.Length; i++)
         {
-            if (TryGetColorFromPlatform(scenePlatforms[i], worldPosition, out color))
+            if (colliders[i] != null)
             {
-                return true;
+                PlatformByCollider[colliders[i]] = this;
             }
         }
-
-        color = PlatformColorType.Black;
-        return false;
     }
 
-    private static ColorPlatform[] GetScenePlatformCache()
+    private void UnregisterColliders()
     {
-        int currentFrame = Time.frameCount;
-        float currentTime = Time.realtimeSinceStartup;
-        bool cacheExpired = scenePlatformCacheFrame != currentFrame
-            && currentTime - scenePlatformCacheTime >= ScenePlatformCacheDuration;
-
-        if (scenePlatformCache == null || cacheExpired)
+        if (colliders == null)
         {
-            scenePlatformCache = FindObjectsOfType<ColorPlatform>(true);
-            scenePlatformCacheFrame = currentFrame;
-            scenePlatformCacheTime = currentTime;
+            return;
         }
 
-        return scenePlatformCache;
-    }
-
-    private static bool TryGetColorFromPlatform(ColorPlatform platform, Vector3 worldPosition, out PlatformColorType color)
-    {
-        if (platform == null || platform.platformColor == PlatformColorType.Gray)
+        for (int i = 0; i < colliders.Length; i++)
         {
-            color = PlatformColorType.Black;
-            return false;
+            Collider2D platformCollider = colliders[i];
+            if (platformCollider != null
+                && PlatformByCollider.TryGetValue(platformCollider, out ColorPlatform owner)
+                && owner == this)
+            {
+                PlatformByCollider.Remove(platformCollider);
+            }
         }
-
-        if (platform.ContainsWorldPosition(worldPosition))
-        {
-            color = platform.platformColor;
-            return true;
-        }
-
-        color = PlatformColorType.Black;
-        return false;
-    }
-
-    public static bool TryGetPlatformForCollider(Collider2D platformCollider, out ColorPlatform platform)
-    {
-        if (platformCollider == null)
-        {
-            platform = null;
-            return false;
-        }
-
-        return PlatformByCollider.TryGetValue(platformCollider, out platform);
     }
 
     private void RefreshForActivePlayers()
@@ -237,23 +232,30 @@ public class ColorPlatform : MonoBehaviour
             return;
         }
 
-        if (platformColliders == null || platformColliders.Length == 0)
+        if (colliders == null)
         {
-            CacheColliders();
+            RegisterColliders();
+        }
+
+        Collider2D[] playerColliders = player.PlayerColliders;
+        if (playerColliders == null)
+        {
+            return;
         }
 
         bool shouldCollide = CanPlayerCollide(player);
-        foreach (Collider2D platformCollider in platformColliders)
+        for (int i = 0; i < colliders.Length; i++)
         {
-            Collider2D[] playerColliders = player.PlayerColliders;
-            if (playerColliders == null)
+            Collider2D platformCollider = colliders[i];
+            if (platformCollider == null)
             {
                 continue;
             }
 
-            foreach (Collider2D playerCollider in playerColliders)
+            for (int j = 0; j < playerColliders.Length; j++)
             {
-                if (platformCollider != null && playerCollider != null)
+                Collider2D playerCollider = playerColliders[j];
+                if (playerCollider != null && !playerCollider.isTrigger)
                 {
                     Physics2D.IgnoreCollision(platformCollider, playerCollider, !shouldCollide);
                 }
@@ -261,87 +263,35 @@ public class ColorPlatform : MonoBehaviour
         }
     }
 
-    private void ApplyVisualColor()
-    {
-        Color color = platformColor switch
-        {
-            PlatformColorType.White => whiteVisualColor,
-            PlatformColorType.Black => blackVisualColor,
-            _ => grayVisualColor
-        };
-
-        if (spriteRenderer != null)
-        {
-            spriteRenderer.color = color;
-        }
-
-        if (tilemap != null)
-        {
-            tilemap.color = color;
-        }
-    }
-
-    private void ApplySurfaceMaterial()
-    {
-        CacheColliders();
-        foreach (Collider2D platformCollider in platformColliders)
-        {
-            if (platformCollider != null)
-            {
-                platformCollider.sharedMaterial = surfaceMaterial;
-            }
-        }
-    }
-
-    private void CacheColliders()
-    {
-        UnregisterColliders();
-        platformColliders = GetComponentsInChildren<Collider2D>();
-        foreach (Collider2D platformCollider in platformColliders)
-        {
-            if (platformCollider != null)
-            {
-                PlatformByCollider[platformCollider] = this;
-            }
-        }
-    }
-
-    private void UnregisterColliders()
-    {
-        if (platformColliders == null)
-        {
-            return;
-        }
-
-        foreach (Collider2D platformCollider in platformColliders)
-        {
-            if (platformCollider != null
-                && PlatformByCollider.TryGetValue(platformCollider, out ColorPlatform platform)
-                && platform == this)
-            {
-                PlatformByCollider.Remove(platformCollider);
-            }
-        }
-    }
-
-    private void CacheVisualComponents()
-    {
-        tilemap = GetComponent<Tilemap>();
-        spriteRenderer = GetComponent<SpriteRenderer>();
-    }
-
     private bool ContainsWorldPosition(Vector3 worldPosition)
     {
         if (tilemap != null)
         {
-            Vector3Int cell = tilemap.WorldToCell(worldPosition);
-            return tilemap.HasTile(cell);
+            return tilemap.HasTile(tilemap.WorldToCell(worldPosition));
         }
 
-        return spriteRenderer != null && spriteRenderer.bounds.Contains(worldPosition);
+        if (spriteRenderer != null)
+        {
+            return spriteRenderer.bounds.Contains(worldPosition);
+        }
+
+        if (colliders == null)
+        {
+            RegisterColliders();
+        }
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null && colliders[i].OverlapPoint(worldPosition))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private void ConfigureTilemapCollider()
+    private void ConfigureTilemapPhysics()
     {
         TilemapCollider2D tilemapCollider = GetComponent<TilemapCollider2D>();
         if (tilemapCollider == null)
@@ -354,21 +304,55 @@ public class ColorPlatform : MonoBehaviour
         {
             body = gameObject.AddComponent<Rigidbody2D>();
         }
-
         body.bodyType = RigidbodyType2D.Static;
         body.simulated = true;
 
-        CompositeCollider2D compositeCollider = GetComponent<CompositeCollider2D>();
-        if (compositeCollider == null)
+        CompositeCollider2D composite = GetComponent<CompositeCollider2D>();
+        if (composite != null)
         {
-            compositeCollider = gameObject.AddComponent<CompositeCollider2D>();
+            tilemapCollider.usedByComposite = true;
+            composite.sharedMaterial = surfaceMaterial;
+        }
+    }
+
+    private void ApplyMaterial()
+    {
+        if (colliders == null)
+        {
+            colliders = GetComponentsInChildren<Collider2D>(true);
         }
 
-        tilemapCollider.usedByComposite = true;
-
-        if (surfaceMaterial != null)
+        for (int i = 0; i < colliders.Length; i++)
         {
-            compositeCollider.sharedMaterial = surfaceMaterial;
+            if (colliders[i] != null)
+            {
+                colliders[i].sharedMaterial = surfaceMaterial;
+            }
+        }
+    }
+
+    private void ApplyVisual()
+    {
+        if (!applyVisualColor)
+        {
+            return;
+        }
+
+        Color color = platformColor switch
+        {
+            PlatformColorType.White => whiteVisualColor,
+            PlatformColorType.Black => blackVisualColor,
+            _ => grayVisualColor
+        };
+
+        if (tilemap != null)
+        {
+            tilemap.color = color;
+        }
+
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = color;
         }
     }
 }

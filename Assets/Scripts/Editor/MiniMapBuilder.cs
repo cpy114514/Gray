@@ -8,6 +8,7 @@ using UnityEngine.UI;
 public static class MiniMapBuilder
 {
     private const string MiniMapPrefabPath = "Assets/Prefabs/MiniMap.prefab";
+    private static readonly Vector2 UiReferenceResolution = new Vector2(1280f, 720f);
 
     [MenuItem("Tools/Gray/Build Minimap In Open Scene")]
     public static void BuildMinimapInOpenScene()
@@ -66,6 +67,9 @@ public static class MiniMapBuilder
         serialized.FindProperty("orthographicSize").floatValue = 16f;
         serialized.FindProperty("textureWidth").intValue = 768;
         serialized.FindProperty("textureHeight").intValue = 432;
+        serialized.FindProperty("defaultUiSize").vector2Value = new Vector2(340f, 191f);
+        serialized.FindProperty("minUiSize").vector2Value = new Vector2(220f, 124f);
+        serialized.FindProperty("maxUiSize").vector2Value = new Vector2(760f, 428f);
         serialized.ApplyModifiedPropertiesWithoutUndo();
 
         return root;
@@ -100,21 +104,28 @@ public static class MiniMapBuilder
 
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.referenceResolution = UiReferenceResolution;
         scaler.matchWidthOrHeight = 0.5f;
 
-        GameObject frame = new GameObject("MiniMapFrame", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        GameObject frame = new GameObject("MiniMapFrame", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(MiniMapMouseResize));
         frame.transform.SetParent(canvasObject.transform, false);
         RectTransform frameRect = frame.GetComponent<RectTransform>();
         frameRect.anchorMin = new Vector2(0f, 1f);
         frameRect.anchorMax = new Vector2(0f, 1f);
         frameRect.pivot = new Vector2(0f, 1f);
-        frameRect.anchoredPosition = new Vector2(32f, -32f);
-        frameRect.sizeDelta = new Vector2(520f, 292f);
+        frameRect.anchoredPosition = new Vector2(16f, -16f);
+        frameRect.sizeDelta = new Vector2(340f, 191f);
 
         Image frameImage = frame.GetComponent<Image>();
         frameImage.color = new Color(0f, 0f, 0f, 0.72f);
-        frameImage.raycastTarget = false;
+        frameImage.raycastTarget = true;
+
+        MiniMapMouseResize resize = frame.GetComponent<MiniMapMouseResize>();
+        SerializedObject resizeSerialized = new SerializedObject(resize);
+        resizeSerialized.FindProperty("defaultSize").vector2Value = new Vector2(340f, 191f);
+        resizeSerialized.FindProperty("minSize").vector2Value = new Vector2(220f, 124f);
+        resizeSerialized.FindProperty("maxSize").vector2Value = new Vector2(760f, 428f);
+        resizeSerialized.ApplyModifiedPropertiesWithoutUndo();
 
         GameObject view = new GameObject("MiniMapView", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
         view.transform.SetParent(frame.transform, false);

@@ -209,7 +209,8 @@ public static class SimplePrototypeSceneBuilder
     private static void CreateColorTilemaps(Tile whiteTile, Tile blackTile, PhysicsMaterial2D noFrictionMaterial)
     {
         GameObject gridObject = new GameObject("Grid");
-        gridObject.AddComponent<Grid>();
+        Grid grid = gridObject.AddComponent<Grid>();
+        grid.cellSize = new Vector3(0.5f, 0.5f, 1f);
 
         Tilemap whiteTilemap = CreateColorTilemap("WhiteTilemap", gridObject.transform, PlatformColorType.White, noFrictionMaterial);
         PaintRect(whiteTilemap, whiteTile, -8, -2, 8, 1);

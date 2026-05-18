@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
@@ -13,6 +14,7 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
 
     private Tilemap sourceTilemap;
     private GameObject runtimeRoot;
+    private Coroutine rebuildRoutine;
 
     private struct Segment
     {
@@ -30,10 +32,25 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
     {
         sourceTilemap = GetComponent<Tilemap>();
         DisableSourceTilemapColliders();
+    }
+
+    private void OnEnable()
+    {
+        AutoBlackTilemap.BlackTilemapGenerated += HandleBlackTilemapGenerated;
 
         if (buildOnAwake)
         {
-            Build();
+            RebuildDelayed();
+        }
+    }
+
+    private void OnDisable()
+    {
+        AutoBlackTilemap.BlackTilemapGenerated -= HandleBlackTilemapGenerated;
+        if (rebuildRoutine != null)
+        {
+            StopCoroutine(rebuildRoutine);
+            rebuildRoutine = null;
         }
     }
 
@@ -61,6 +78,7 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
         runtimeRoot.transform.position = Vector3.zero;
         runtimeRoot.transform.rotation = Quaternion.identity;
         runtimeRoot.transform.localScale = Vector3.one;
+        runtimeRoot.layer = gameObject.layer;
 
         Rigidbody2D body = runtimeRoot.AddComponent<Rigidbody2D>();
         body.bodyType = RigidbodyType2D.Static;
@@ -74,6 +92,7 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
             Segment segment = segments[i];
             GameObject segmentObject = new GameObject($"Boundary_{i}");
             segmentObject.transform.SetParent(runtimeRoot.transform, false);
+            segmentObject.layer = gameObject.layer;
 
             EdgeCollider2D edge = segmentObject.AddComponent<EdgeCollider2D>();
             edge.edgeRadius = edgeRadius;
@@ -86,9 +105,6 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
     {
         List<Segment> segments = new List<Segment>();
         BoundsInt bounds = sourceTilemap.cellBounds;
-        Vector3 cellSize = sourceTilemap.layoutGrid != null
-            ? sourceTilemap.layoutGrid.cellSize
-            : Vector3.one;
 
         foreach (Vector3Int cell in bounds.allPositionsWithin)
         {
@@ -97,11 +113,10 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
                 continue;
             }
 
-            Vector3 bottomLeft = sourceTilemap.CellToWorld(cell);
-            Vector2 bl = bottomLeft;
-            Vector2 br = new Vector2(bottomLeft.x + cellSize.x, bottomLeft.y);
-            Vector2 tr = new Vector2(bottomLeft.x + cellSize.x, bottomLeft.y + cellSize.y);
-            Vector2 tl = new Vector2(bottomLeft.x, bottomLeft.y + cellSize.y);
+            Vector2 bl = sourceTilemap.CellToWorld(cell);
+            Vector2 br = sourceTilemap.CellToWorld(cell + Vector3Int.right);
+            Vector2 tl = sourceTilemap.CellToWorld(cell + Vector3Int.up);
+            Vector2 tr = sourceTilemap.CellToWorld(cell + Vector3Int.right + Vector3Int.up);
 
             AddSegmentIfBoundary(segments, grayDoorBounds, cell, Vector3Int.up, tl, tr);
             AddSegmentIfBoundary(segments, grayDoorBounds, cell, Vector3Int.down, bl, br);
@@ -110,6 +125,37 @@ public class BlackWhiteBoundaryCollider2D : MonoBehaviour
         }
 
         return segments;
+    }
+
+    private void HandleBlackTilemapGenerated()
+    {
+        if (isActiveAndEnabled && buildOnAwake)
+        {
+            RebuildDelayed();
+        }
+    }
+
+    private void RebuildDelayed()
+    {
+        if (!Application.isPlaying)
+        {
+            Build();
+            return;
+        }
+
+        if (rebuildRoutine != null)
+        {
+            StopCoroutine(rebuildRoutine);
+        }
+
+        rebuildRoutine = StartCoroutine(RebuildAfterTilemapsUpdate());
+    }
+
+    private IEnumerator RebuildAfterTilemapsUpdate()
+    {
+        yield return null;
+        Build();
+        rebuildRoutine = null;
     }
 
     private void AddSegmentIfBoundary(

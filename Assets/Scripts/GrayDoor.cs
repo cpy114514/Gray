@@ -1,49 +1,49 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-[ExecuteAlways]
 [RequireComponent(typeof(Collider2D))]
 public class GrayDoor : MonoBehaviour
 {
-    [SerializeField] private bool oneTimeUse;
+    private static Material sharedParticleMaterial;
 
     [Header("Message")]
+    [SerializeField] private bool showMessageOnce = true;
     [SerializeField] private string message = "Something changes.";
-    [SerializeField] private float messageTime = 3f;
+    [SerializeField] private float messageTime = 2f;
     [SerializeField] private TutorialTextUI tutorialTextUI;
 
-    [Header("Effects")]
-    [SerializeField] private bool autoCreateParticles = true;
-    [SerializeField] private ParticleSystem idleParticles;
-    [SerializeField] private ParticleSystem burstParticles;
-    [SerializeField] private Color particleColor = new Color(0.68f, 0.68f, 0.68f, 0.72f);
-    [SerializeField] private int burstParticleCount = 18;
+    [Header("Particles")]
+    [SerializeField] private bool createParticles = true;
+    [SerializeField] private ParticleSystem passParticles;
+    [SerializeField] private int passParticleCount = 6;
+    [SerializeField] private float emitInterval = 0.05f;
+    [SerializeField] private Color fallbackParticleColor = Color.white;
 
-    private static Material sharedParticleMaterial;
-    private bool hasTriggered;
-    private readonly Dictionary<PlayerController2D, int> playerTouchCounts = new Dictionary<PlayerController2D, int>();
-    private Collider2D doorCollider;
+    private readonly Dictionary<PlayerController2D, int> touches = new Dictionary<PlayerController2D, int>();
+    private readonly Dictionary<PlayerController2D, float> nextEmitTime = new Dictionary<PlayerController2D, float>();
+    private Collider2D triggerCollider;
+    private bool messageShown;
+    private ParticleSystem.Particle[] particleBuffer;
 
     private void Awake()
     {
-        ApplyDoorSetup();
-        EnsureParticles();
-        if (tutorialTextUI == null)
-        {
-            tutorialTextUI = FindObjectOfType<TutorialTextUI>();
-        }
-    }
-
-    private void OnValidate()
-    {
-        ApplyDoorSetup();
-        ConfigureExistingParticles();
+        Configure();
     }
 
     private void OnEnable()
     {
-        ApplyDoorSetup();
-        EnsureParticles();
+        Configure();
+    }
+
+    private void OnValidate()
+    {
+        Configure();
+    }
+
+    private void Update()
+    {
+        PlayerController2D player = PlayerController2D.Players.Count > 0 ? PlayerController2D.Players[0] : null;
+        ParticleColorUtility.RefreshParticleSystemByPlayerColor(passParticles, ref particleBuffer, player);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -54,16 +54,16 @@ public class GrayDoor : MonoBehaviour
             return;
         }
 
-        if (!playerTouchCounts.TryGetValue(player, out int touchCount))
+        if (!touches.TryGetValue(player, out int count))
         {
-            playerTouchCounts[player] = 1;
+            touches[player] = 1;
             player.EnterGrayDoor();
-            PlayBurstEffect();
             ShowMessage();
+            Emit(player, force: true);
             return;
         }
 
-        playerTouchCounts[player] = touchCount + 1;
+        touches[player] = count + 1;
     }
 
     private void OnTriggerStay2D(Collider2D other)
@@ -74,17 +74,17 @@ public class GrayDoor : MonoBehaviour
             return;
         }
 
-        if (!playerTouchCounts.ContainsKey(player))
+        if (!touches.ContainsKey(player))
         {
-            playerTouchCounts[player] = 1;
+            touches[player] = 1;
             player.EnterGrayDoor();
-            PlayBurstEffect();
-            ShowMessage();
         }
         else
         {
             player.StayInGrayDoor();
         }
+
+        Emit(player, force: false);
     }
 
     private void OnTriggerExit2D(Collider2D other)
@@ -95,212 +95,143 @@ public class GrayDoor : MonoBehaviour
             return;
         }
 
-        if (!playerTouchCounts.TryGetValue(player, out int touchCount))
+        if (!touches.TryGetValue(player, out int count))
         {
             player.ExitGrayDoor();
             return;
         }
 
-        touchCount--;
-        if (touchCount > 0)
+        count--;
+        if (count > 0)
         {
-            playerTouchCounts[player] = touchCount;
+            touches[player] = count;
             return;
         }
 
-        playerTouchCounts.Remove(player);
+        touches.Remove(player);
+        nextEmitTime.Remove(player);
         player.ExitGrayDoor();
+    }
+
+    public void RebuildEffects()
+    {
+        createParticles = true;
+        EnsureParticles();
+    }
+
+    private void Configure()
+    {
+        triggerCollider = GetComponent<Collider2D>();
+        if (triggerCollider != null)
+        {
+            triggerCollider.isTrigger = true;
+        }
+
+        SpriteRenderer renderer = GetComponent<SpriteRenderer>();
+        if (renderer != null)
+        {
+            renderer.color = Color.gray;
+        }
+
+        if (tutorialTextUI == null && Application.isPlaying)
+        {
+            tutorialTextUI = FindObjectOfType<TutorialTextUI>();
+        }
+
+        EnsureParticles();
     }
 
     private void ShowMessage()
     {
-        if (oneTimeUse && hasTriggered)
+        if (showMessageOnce && messageShown)
         {
             return;
         }
 
-        hasTriggered = true;
-
+        messageShown = true;
         if (tutorialTextUI != null && !string.IsNullOrWhiteSpace(message))
         {
             tutorialTextUI.ShowText(message, messageTime);
         }
     }
 
+    private void Emit(PlayerController2D player, bool force)
+    {
+        if (player == null || passParticles == null)
+        {
+            return;
+        }
+
+        float now = Time.time;
+        if (!force && nextEmitTime.TryGetValue(player, out float allowedTime) && now < allowedTime)
+        {
+            return;
+        }
+
+        nextEmitTime[player] = now + Mathf.Max(0.01f, emitInterval);
+
+        Vector2 velocity = player.Velocity.sqrMagnitude > 0.01f
+            ? player.Velocity.normalized * 0.7f
+            : Vector2.right * Mathf.Sign(player.MoveInput == 0f ? 1f : player.MoveInput);
+        Color color = ParticleColorUtility.PlayerColor(player, fallbackParticleColor, 0.9f);
+
+        for (int i = 0; i < Mathf.Max(1, passParticleCount); i++)
+        {
+            ParticleSystem.EmitParams emitParams = new ParticleSystem.EmitParams
+            {
+                position = player.transform.position + (Vector3)(Random.insideUnitCircle * 0.18f),
+                velocity = velocity + Random.insideUnitCircle * 0.25f,
+                startColor = color,
+                startLifetime = Random.Range(0.12f, 0.24f),
+                startSize = Random.Range(0.12f, 0.28f)
+            };
+
+            passParticles.Emit(emitParams, 1);
+        }
+    }
+
     private void EnsureParticles()
     {
-        if (!autoCreateParticles)
+        if (!createParticles)
         {
             return;
         }
 
-        if (idleParticles == null)
+        if (passParticles == null)
         {
-            idleParticles = CreateParticleSystem("GrayDoor_IdleParticles");
-            ConfigureIdleParticles(idleParticles);
+            Transform existing = transform.Find("GrayDoorPassParticles");
+            if (existing != null)
+            {
+                passParticles = existing.GetComponent<ParticleSystem>();
+            }
         }
 
-        if (burstParticles == null)
+        if (passParticles == null)
         {
-            burstParticles = CreateParticleSystem("GrayDoor_BurstParticles");
-            ConfigureBurstParticles(burstParticles);
+            GameObject particleObject = new GameObject("GrayDoorPassParticles");
+            particleObject.transform.SetParent(transform, false);
+            passParticles = particleObject.AddComponent<ParticleSystem>();
         }
 
-        ConfigureParticleRenderer(idleParticles, 3);
-        ConfigureParticleRenderer(burstParticles, 4);
-
-        if (!idleParticles.isPlaying)
-        {
-            idleParticles.Play();
-        }
-    }
-
-    public void RebuildEffects()
-    {
-        autoCreateParticles = true;
-        idleParticles = FindParticleSystem("GrayDoor_IdleParticles");
-        burstParticles = FindParticleSystem("GrayDoor_BurstParticles");
-        EnsureParticles();
-    }
-
-    private ParticleSystem CreateParticleSystem(string objectName)
-    {
-        Transform existing = transform.Find(objectName);
-        GameObject particleObject = existing != null
-            ? existing.gameObject
-            : new GameObject(objectName);
-
-        particleObject.transform.SetParent(transform, false);
-        particleObject.transform.localPosition = Vector3.zero;
-        particleObject.transform.localRotation = Quaternion.identity;
-        particleObject.transform.localScale = Vector3.one;
-
-        ParticleSystem particles = particleObject.GetComponent<ParticleSystem>();
-        if (particles == null)
-        {
-            particles = particleObject.AddComponent<ParticleSystem>();
-        }
-
-        return particles;
-    }
-
-    private ParticleSystem FindParticleSystem(string objectName)
-    {
-        Transform existing = transform.Find(objectName);
-        return existing != null ? existing.GetComponent<ParticleSystem>() : null;
-    }
-
-    private void ConfigureExistingParticles()
-    {
-        if (idleParticles != null)
-        {
-            ConfigureIdleParticles(idleParticles);
-            ConfigureParticleRenderer(idleParticles, 3);
-        }
-
-        if (burstParticles != null)
-        {
-            ConfigureBurstParticles(burstParticles);
-            ConfigureParticleRenderer(burstParticles, 4);
-        }
-    }
-
-    private void ConfigureIdleParticles(ParticleSystem particles)
-    {
-        ParticleSystem.MainModule main = particles.main;
-        main.loop = true;
-        main.playOnAwake = true;
-        main.simulationSpace = ParticleSystemSimulationSpace.World;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(0.55f, 1.15f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(0.08f, 0.42f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.12f);
-        main.startColor = particleColor;
-        main.maxParticles = 64;
-
-        ParticleSystem.EmissionModule emission = particles.emission;
-        emission.enabled = true;
-        emission.rateOverTime = 14f;
-
-        ParticleSystem.ShapeModule shape = particles.shape;
-        shape.enabled = true;
-        shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = GetDoorParticleBoxSize(0.9f);
-
-        ParticleSystem.VelocityOverLifetimeModule velocity = particles.velocityOverLifetime;
-        velocity.enabled = true;
-        velocity.space = ParticleSystemSimulationSpace.Local;
-        velocity.x = new ParticleSystem.MinMaxCurve(-0.18f, 0.18f);
-        velocity.y = new ParticleSystem.MinMaxCurve(-0.25f, 0.25f);
-
-        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
-        colorOverLifetime.enabled = true;
-        colorOverLifetime.color = CreateFadeGradient(particleColor);
-    }
-
-    private void ConfigureBurstParticles(ParticleSystem particles)
-    {
-        ParticleSystem.MainModule main = particles.main;
-        main.loop = false;
+        ParticleSystem.MainModule main = passParticles.main;
         main.playOnAwake = false;
+        main.loop = false;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(0.28f, 0.55f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(1.1f, 2.8f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.16f);
-        main.startColor = particleColor;
-        main.maxParticles = 96;
+        main.maxParticles = 80;
 
-        ParticleSystem.EmissionModule emission = particles.emission;
+        ParticleSystem.EmissionModule emission = passParticles.emission;
         emission.enabled = false;
 
-        ParticleSystem.ShapeModule shape = particles.shape;
-        shape.enabled = true;
-        shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = GetDoorParticleBoxSize(0.75f);
+        ParticleSystem.ShapeModule shape = passParticles.shape;
+        shape.enabled = false;
 
-        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
-        colorOverLifetime.enabled = true;
-        colorOverLifetime.color = CreateFadeGradient(particleColor);
-    }
-
-    private Vector3 GetDoorParticleBoxSize(float scale)
-    {
-        Vector3 localScale = transform.localScale;
-        float width = Mathf.Max(0.35f, Mathf.Abs(localScale.x));
-        float height = Mathf.Max(1.2f, Mathf.Abs(localScale.y));
-        return new Vector3(width * scale, height * scale, 0.08f);
-    }
-
-    private static ParticleSystem.MinMaxGradient CreateFadeGradient(Color color)
-    {
-        Gradient gradient = new Gradient();
-        gradient.SetKeys(
-            new[]
-            {
-                new GradientColorKey(color, 0f),
-                new GradientColorKey(color, 0.65f),
-                new GradientColorKey(color, 1f)
-            },
-            new[]
-            {
-                new GradientAlphaKey(0f, 0f),
-                new GradientAlphaKey(color.a, 0.18f),
-                new GradientAlphaKey(0f, 1f)
-            });
-
-        return new ParticleSystem.MinMaxGradient(gradient);
-    }
-
-    private void ConfigureParticleRenderer(ParticleSystem particles, int sortingOrder)
-    {
-        ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
-        if (renderer == null)
+        ParticleSystemRenderer renderer = passParticles.GetComponent<ParticleSystemRenderer>();
+        if (renderer != null)
         {
-            return;
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.sortingOrder = 8;
+            renderer.sharedMaterial = GetParticleMaterial();
         }
-
-        renderer.renderMode = ParticleSystemRenderMode.Billboard;
-        renderer.sortingOrder = sortingOrder;
-        renderer.sharedMaterial = GetParticleMaterial();
     }
 
     private static Material GetParticleMaterial()
@@ -311,36 +242,29 @@ public class GrayDoor : MonoBehaviour
         }
 
         Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+        }
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        }
+
         sharedParticleMaterial = new Material(shader)
         {
-            name = "Runtime_GrayDoorParticleMaterial"
+            name = "Runtime_GrayDoorPassParticleMaterial"
         };
+
+        if (sharedParticleMaterial.HasProperty("_Color"))
+        {
+            sharedParticleMaterial.SetColor("_Color", Color.white);
+        }
+        if (sharedParticleMaterial.HasProperty("_BaseColor"))
+        {
+            sharedParticleMaterial.SetColor("_BaseColor", Color.white);
+        }
+
         return sharedParticleMaterial;
-    }
-
-    private void PlayBurstEffect()
-    {
-        EnsureParticles();
-        if (burstParticles == null)
-        {
-            return;
-        }
-
-        burstParticles.Emit(Mathf.Max(1, burstParticleCount));
-    }
-
-    private void ApplyDoorSetup()
-    {
-        doorCollider = GetComponent<Collider2D>();
-        if (doorCollider != null)
-        {
-            doorCollider.isTrigger = true;
-        }
-
-        SpriteRenderer renderer = GetComponent<SpriteRenderer>();
-        if (renderer != null)
-        {
-            renderer.color = Color.gray;
-        }
     }
 }

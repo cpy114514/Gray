@@ -27,11 +27,13 @@ public class CameraFollow2D : MonoBehaviour
     private Vector3 lastTargetPosition;
     private float shakeTimer;
     private float shakeStrength;
+    private float defaultOrthographicSize;
 
     private void Awake()
     {
         followCamera = GetComponent<Camera>();
         followCamera.orthographic = true;
+        defaultOrthographicSize = followCamera.orthographicSize;
         FindTargetIfNeeded();
 
         if (target != null)
@@ -94,6 +96,19 @@ public class CameraFollow2D : MonoBehaviour
     {
         shakeTimer = Mathf.Max(shakeTimer, duration);
         shakeStrength = Mathf.Max(shakeStrength, strength);
+    }
+
+    public void RestoreDefaultZoom()
+    {
+        if (followCamera == null)
+        {
+            followCamera = GetComponent<Camera>();
+        }
+
+        if (followCamera != null)
+        {
+            followCamera.orthographicSize = defaultOrthographicSize;
+        }
     }
 
     private void FindTargetIfNeeded()

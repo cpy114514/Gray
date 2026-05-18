@@ -7,6 +7,7 @@ public class LevelGoal : MonoBehaviour
     [Header("Scene Flow")]
     [SerializeField] private bool oneTimeUse = true;
     [SerializeField] private WinPanelController winPanelController;
+    [SerializeField] private LevelCompleteReveal2D completionReveal;
     [SerializeField] private bool loadNextLevelIfNoWinPanel = false;
 
     [Header("Visual Squares")]
@@ -77,6 +78,22 @@ public class LevelGoal : MonoBehaviour
 
         used = true;
 
+        LevelCompleteReveal2D reveal = GetCompletionReveal();
+        if (reveal != null && reveal.PlayReveal(ShowCompletionResult))
+        {
+            return;
+        }
+
+        ShowCompletionResult();
+    }
+
+    public void ResetGoal()
+    {
+        used = false;
+    }
+
+    private void ShowCompletionResult()
+    {
         WinPanelController panel = GetWinPanelController();
         if (panel != null)
         {
@@ -119,6 +136,22 @@ public class LevelGoal : MonoBehaviour
 
         winPanelController = FindObjectOfType<WinPanelController>(true);
         return winPanelController;
+    }
+
+    private LevelCompleteReveal2D GetCompletionReveal()
+    {
+        if (completionReveal != null)
+        {
+            return completionReveal;
+        }
+
+        completionReveal = GetComponent<LevelCompleteReveal2D>();
+        if (completionReveal == null)
+        {
+            completionReveal = gameObject.AddComponent<LevelCompleteReveal2D>();
+        }
+
+        return completionReveal;
     }
 
     private void RotateSquares()

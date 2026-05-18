@@ -13,6 +13,7 @@ public class PauseMenuController : MonoBehaviour
 
     private WinPanelController winPanelController;
     private bool paused;
+    private bool returningToMainMenu;
 
     private void Awake()
     {
@@ -97,8 +98,24 @@ public class PauseMenuController : MonoBehaviour
 
     public void ReturnToMainMenu()
     {
+        if (returningToMainMenu)
+        {
+            return;
+        }
+
+        returningToMainMenu = true;
+        paused = false;
         Time.timeScale = 1f;
-        SceneFlow.ReturnToMainMenu();
+        HidePausePanel();
+        if (settingsUI != null && settingsUI.IsOpen)
+        {
+            settingsUI.Close();
+        }
+
+        if (!SceneShatterTransition.PlayToMainMenu(this))
+        {
+            SceneFlow.ReturnToMainMenu();
+        }
     }
 
     private void HidePausePanel()

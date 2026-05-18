@@ -145,15 +145,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 858a5b071f5629f438d191ae290dde12, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  oneTimeUse: 0
+  showMessageOnce: 1
   message: Something changes.
   messageTime: 3
   tutorialTextUI: {fileID: 0}
-  autoCreateParticles: 1
-  idleParticles: {fileID: 4649652071634580370}
-  burstParticles: {fileID: 4206897962157853717}
-  particleColor: {r: 0.68, g: 0.68, b: 0.68, a: 0.72}
-  burstParticleCount: 18
+  createParticles: 1
+  passParticles: {fileID: 0}
+  passParticleCount: 6
+  emitInterval: 0.05
+  fallbackParticleColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!1 &1784584892804019736
 GameObject:
   m_ObjectHideFlags: 0
@@ -202,9 +202,9 @@ ParticleSystem:
   ringBufferMode: 0
   ringBufferLoopRange: {x: 0, y: 1}
   emitterVelocityMode: 1
-  looping: 1
+  looping: 0
   prewarm: 0
-  playOnAwake: 1
+  playOnAwake: 0
   useUnscaledTime: 0
   autoRandomSeed: 1
   startDelay:
@@ -262,7 +262,7 @@ ParticleSystem:
       m_RotationOrder: 4
   moveWithTransform: 1
   moveWithCustomTransform: {fileID: 0}
-  scalingMode: 1
+  scalingMode: 2
   randomSeed: 0
   InitialModule:
     serializedVersion: 3
@@ -270,8 +270,8 @@ ParticleSystem:
     startLifetime:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 1.15
-      minScalar: 0.55
+      scalar: 0.28
+      minScalar: 0.14
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -323,7 +323,7 @@ ParticleSystem:
     startSpeed:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.42
+      scalar: 0.28
       minScalar: 0.08
       maxCurve:
         serializedVersion: 2
@@ -441,8 +441,8 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.12
-      minScalar: 0.035
+      scalar: 0.14
+      minScalar: 0.06
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -758,7 +758,7 @@ ParticleSystem:
         m_RotationOrder: 4
     randomizeRotationDirection: 0
     gravitySource: 0
-    maxNumParticles: 64
+    maxNumParticles: 80
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
     rotation3D: 0
@@ -1019,12 +1019,12 @@ ParticleSystem:
           m_PostInfinity: 2
           m_RotationOrder: 4
   EmissionModule:
-    enabled: 1
+    enabled: 0
     serializedVersion: 4
     rateOverTime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 14
+      scalar: 42
       minScalar: 10
       maxCurve:
         serializedVersion: 2
@@ -1649,8 +1649,8 @@ ParticleSystem:
     x:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.18
-      minScalar: -0.18
+      scalar: 0.7
+      minScalar: -0.7
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -1702,8 +1702,8 @@ ParticleSystem:
     y:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.25
-      minScalar: -0.25
+      scalar: 0.85
+      minScalar: -0.35
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -2229,7 +2229,7 @@ ParticleSystem:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-    inWorldSpace: 0
+    inWorldSpace: 1
   InheritVelocityModule:
     enabled: 0
     m_Mode: 0
@@ -4955,8 +4955,8 @@ ParticleSystemRenderer:
   m_RenderMode: 0
   m_MeshDistribution: 0
   m_SortMode: 0
-  m_MinParticleSize: 0
-  m_MaxParticleSize: 0.5
+  m_MinParticleSize: 0.02
+  m_MaxParticleSize: 1
   m_CameraVelocityScale: 0
   m_VelocityScale: 0
   m_LengthScale: 2
@@ -5092,7 +5092,7 @@ ParticleSystem:
       m_RotationOrder: 4
   moveWithTransform: 1
   moveWithCustomTransform: {fileID: 0}
-  scalingMode: 1
+  scalingMode: 2
   randomSeed: 0
   InitialModule:
     serializedVersion: 3
@@ -5100,8 +5100,8 @@ ParticleSystem:
     startLifetime:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.55
-      minScalar: 0.28
+      scalar: 0.34
+      minScalar: 0.16
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -5153,8 +5153,8 @@ ParticleSystem:
     startSpeed:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 2.8
-      minScalar: 1.1
+      scalar: 0.9
+      minScalar: 0.35
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -5271,8 +5271,8 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.16
-      minScalar: 0.05
+      scalar: 0.18
+      minScalar: 0.08
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -5588,7 +5588,7 @@ ParticleSystem:
         m_RotationOrder: 4
     randomizeRotationDirection: 0
     gravitySource: 0
-    maxNumParticles: 96
+    maxNumParticles: 120
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
     rotation3D: 0
@@ -9781,12 +9781,12 @@ ParticleSystemRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 4
+  m_SortingOrder: 5
   m_RenderMode: 0
   m_MeshDistribution: 0
   m_SortMode: 0
-  m_MinParticleSize: 0
-  m_MaxParticleSize: 0.5
+  m_MinParticleSize: 0.02
+  m_MaxParticleSize: 1
   m_CameraVelocityScale: 0
   m_VelocityScale: 0
   m_LengthScale: 2

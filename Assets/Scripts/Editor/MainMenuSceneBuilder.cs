@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Events;
@@ -12,6 +13,8 @@ public static class MainMenuSceneBuilder
     private const string MainMenuScenePath = "Assets/Scenes/MainMenu.unity";
     private const string PrefabFolderPath = "Assets/Prefabs";
     private const string GameplayUiPrefabPath = "Assets/Prefabs/GameplayUI.prefab";
+    private static readonly Vector2 UiReferenceResolution = new Vector2(1280f, 720f);
+    private static readonly Vector2 WinButtonSize = new Vector2(280f, 44f);
 
     [MenuItem("Tools/Gray/Build Main Menu Scene")]
     public static void Build()
@@ -33,23 +36,37 @@ public static class MainMenuSceneBuilder
         GameObject levelPanel = CreatePanel(canvas.transform, "LevelSelectPanel", false);
         SettingsUiParts settingsParts = CreateSettingsPanel(canvas.transform);
 
-        CreateText(mainPanel.transform, "Title", "GRAY", 88, new Vector2(0f, 140f), new Vector2(700f, 120f), Color.white);
+        Text titleText = CreateText(mainPanel.transform, "Title", "GRAY", 88, new Vector2(0f, 140f), new Vector2(700f, 120f), Color.white);
         Button startButton = CreateButton(mainPanel.transform, "StartButton", "START", new Vector2(0f, 35f));
-        Button settingsButton = CreateButton(mainPanel.transform, "SettingsButton", "SETTINGS", new Vector2(0f, -41f));
-        Button quitButton = CreateButton(mainPanel.transform, "QuitButton", "QUIT", new Vector2(0f, -117f));
+        Button quitButton = CreateButton(mainPanel.transform, "ExitButton", "EXIT", new Vector2(0f, -41f));
+        Button settingsButton = CreateButton(mainPanel.transform, "SettingsButton", "SETTINGS", new Vector2(0f, -117f));
 
         CreateText(levelPanel.transform, "LevelSelectTitle", "SELECT LEVEL", 58, new Vector2(0f, 165f), new Vector2(700f, 90f), Color.white);
-        Button levelButton1 = CreateButton(levelPanel.transform, "LevelButton_1", "LEVEL 1", new Vector2(0f, 60f), "LevelButton_1_Label");
-        Button levelButton2 = CreateButton(levelPanel.transform, "LevelButton_2", "LEVEL 2", new Vector2(0f, -8f), "LevelButton_2_Label");
-        Button unlockAllButton = CreateButton(levelPanel.transform, "UnlockAllButton", "UNLOCK ALL", new Vector2(0f, -88f));
-        Button backButton = CreateButton(levelPanel.transform, "BackButton", "BACK", new Vector2(0f, -156f));
+        List<Button> levelButtons = new List<Button>();
+        List<Text> levelLabels = new List<Text>();
+        int gameplayLevelCount = Mathf.Max(0, EditorBuildSettings.scenes.Length - SceneFlow.FirstGameplayBuildIndex);
+        const float levelButtonStartY = 60f;
+        const float levelButtonSpacing = 68f;
+        for (int i = 0; i < gameplayLevelCount; i++)
+        {
+            int buildIndex = SceneFlow.FirstGameplayBuildIndex + i;
+            string buttonName = $"LevelButton_{i + 1}";
+            string labelName = $"{buttonName}_Label";
+            Button levelButton = CreateButton(
+                levelPanel.transform,
+                buttonName,
+                SceneFlow.GetLevelDisplayName(buildIndex),
+                new Vector2(0f, levelButtonStartY - levelButtonSpacing * i),
+                labelName);
+            levelButtons.Add(levelButton);
+            levelLabels.Add(levelButton.transform.Find(labelName).GetComponent<Text>());
+        }
+
+        Button backButton = CreateButton(levelPanel.transform, "BackButton", "BACK", new Vector2(0f, levelButtonStartY - levelButtonSpacing * gameplayLevelCount - 12f));
 
         UnityEventTools.AddPersistentListener(startButton.onClick, controller.ShowLevelSelect);
         UnityEventTools.AddPersistentListener(settingsButton.onClick, controller.ShowSettings);
         UnityEventTools.AddPersistentListener(quitButton.onClick, controller.QuitGame);
-        UnityEventTools.AddPersistentListener(levelButton1.onClick, controller.LoadLevel1);
-        UnityEventTools.AddPersistentListener(levelButton2.onClick, controller.LoadLevel2);
-        UnityEventTools.AddPersistentListener(unlockAllButton.onClick, controller.UnlockAll);
         UnityEventTools.AddPersistentListener(backButton.onClick, controller.ShowMainMenu);
         UnityEventTools.AddPersistentListener(settingsParts.backButton.onClick, settingsUI.Close);
         UnityEventTools.AddPersistentListener(settingsParts.masterVolumeSlider.onValueChanged, settingsUI.SetMasterVolume);
@@ -64,13 +81,9 @@ public static class MainMenuSceneBuilder
             settingsButton,
             quitButton,
             backButton,
-            unlockAllButton,
-            new[] { levelButton1, levelButton2 },
-            new[]
-            {
-                levelButton1.transform.Find("LevelButton_1_Label").GetComponent<Text>(),
-                levelButton2.transform.Find("LevelButton_2_Label").GetComponent<Text>()
-            });
+            levelButtons.ToArray(),
+            levelLabels.ToArray(),
+            titleText);
         AssignSettingsReferences(settingsUI, settingsParts, mainPanel);
 
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
@@ -195,9 +208,9 @@ public static class MainMenuSceneBuilder
         Button settingsButton,
         Button quitButton,
         Button backButton,
-        Button unlockAllButton,
         Button[] levelButtons,
-        Text[] levelLabels)
+        Text[] levelLabels,
+        Text titleText)
     {
         SerializedObject serialized = new SerializedObject(controller);
         serialized.FindProperty("mainMenuPanel").objectReferenceValue = mainPanel;
@@ -207,7 +220,7 @@ public static class MainMenuSceneBuilder
         serialized.FindProperty("settingsButton").objectReferenceValue = settingsButton;
         serialized.FindProperty("quitButton").objectReferenceValue = quitButton;
         serialized.FindProperty("backButton").objectReferenceValue = backButton;
-        serialized.FindProperty("unlockAllButton").objectReferenceValue = unlockAllButton;
+        serialized.FindProperty("titleText").objectReferenceValue = titleText;
 
         SerializedProperty buttonsProperty = serialized.FindProperty("levelButtons");
         buttonsProperty.arraySize = levelButtons.Length;
@@ -277,7 +290,7 @@ public static class MainMenuSceneBuilder
 
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.referenceResolution = UiReferenceResolution;
         scaler.matchWidthOrHeight = 0.5f;
         return canvas;
     }
@@ -322,10 +335,22 @@ public static class MainMenuSceneBuilder
     private static WinUiParts CreateWinPanel(Transform parent)
     {
         GameObject panel = CreatePanel(parent, "WinPanel", false);
-        CreateText(panel.transform, "WinTitle", "LEVEL CLEAR", 64, new Vector2(0f, 160f), new Vector2(700f, 100f), Color.white);
-        Button nextLevelButton = CreateButton(panel.transform, "WinNextLevelButton", "NEXT LEVEL", new Vector2(0f, 56f), "WinNextLevelButton_Label");
-        Button retryButton = CreateButton(panel.transform, "WinRetryButton", "RETRY", new Vector2(0f, -16f));
-        Button mainMenuButton = CreateButton(panel.transform, "WinMainMenuButton", "MAIN MENU", new Vector2(0f, -88f));
+        Image panelImage = panel.GetComponent<Image>();
+        if (panelImage != null)
+        {
+            panelImage.enabled = false;
+            panelImage.raycastTarget = false;
+        }
+
+        Text title = CreateText(panel.transform, "WinTitle", "LEVEL CLEAR", 64, new Vector2(0f, 160f), new Vector2(700f, 100f), Color.white);
+        title.gameObject.SetActive(false);
+
+        Button mainMenuButton = CreateButton(panel.transform, "WinMainMenuButton", "MAIN MENU", new Vector2(-36f, 38f));
+        Button retryButton = CreateButton(panel.transform, "WinRetryButton", "RETRY", new Vector2(-36f, 94f));
+        Button nextLevelButton = CreateButton(panel.transform, "WinNextLevelButton", "NEXT LEVEL", new Vector2(-36f, 150f), "WinNextLevelButton_Label");
+        ConfigureBottomRightButton(mainMenuButton);
+        ConfigureBottomRightButton(retryButton);
+        ConfigureBottomRightButton(nextLevelButton);
 
         return new WinUiParts
         {
@@ -335,6 +360,32 @@ public static class MainMenuSceneBuilder
             nextLevelButton = nextLevelButton,
             nextLevelLabel = nextLevelButton.transform.Find("WinNextLevelButton_Label").GetComponent<Text>()
         };
+    }
+
+    private static void ConfigureBottomRightButton(Button button)
+    {
+        RectTransform rect = button.transform as RectTransform;
+        if (rect == null)
+        {
+            return;
+        }
+
+        rect.anchorMin = new Vector2(1f, 0f);
+        rect.anchorMax = new Vector2(1f, 0f);
+        rect.pivot = new Vector2(1f, 0f);
+        rect.sizeDelta = WinButtonSize;
+
+        Text label = button.GetComponentInChildren<Text>(true);
+        if (label != null)
+        {
+            RectTransform labelRect = label.transform as RectTransform;
+            if (labelRect != null)
+            {
+                labelRect.sizeDelta = WinButtonSize;
+            }
+
+            label.fontSize = 22;
+        }
     }
 
     private static Button CreateButton(Transform parent, string name, string label, Vector2 position, string labelObjectName = null)

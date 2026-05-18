@@ -94,6 +94,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   oneTimeUse: 1
   winPanelController: {fileID: 0}
+  completionReveal: {fileID: 0}
   loadNextLevelIfNoWinPanel: 1
   outerSquare: {fileID: 1000000000000000005}
   innerSquare: {fileID: 1000000000000000008}

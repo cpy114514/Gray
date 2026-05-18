@@ -61,7 +61,9 @@ public static class TilemapSetupTool
 
         GameObject gridObject = new GameObject("Grid");
         Undo.RegisterCreatedObjectUndo(gridObject, "Create Grid");
-        return gridObject.AddComponent<Grid>();
+        Grid createdGrid = gridObject.AddComponent<Grid>();
+        createdGrid.cellSize = new Vector3(0.5f, 0.5f, 1f);
+        return createdGrid;
     }
 
     private static Tilemap CreateOrUpdateColorTilemap(Transform parent, string name, PlatformColorType platformColor, PhysicsMaterial2D surfaceMaterial)

@@ -11,12 +11,12 @@ public class RespawnPoint : MonoBehaviour
     {
         Collider2D pointCollider = GetComponent<Collider2D>();
         pointCollider.isTrigger = true;
-        ApplyVisualColor();
+        HideVisuals();
     }
 
     private void OnValidate()
     {
-        ApplyVisualColor();
+        HideVisuals();
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -31,7 +31,7 @@ public class RespawnPoint : MonoBehaviour
     public void SetRespawnColor(PlayerColorState newColor)
     {
         respawnColor = newColor;
-        ApplyVisualColor();
+        HideVisuals();
     }
 
     public void ApplyTo(PlayerController2D player)
@@ -39,16 +39,15 @@ public class RespawnPoint : MonoBehaviour
         player.SetSpawn(transform.position, respawnColor);
     }
 
-    private void ApplyVisualColor()
+    private void HideVisuals()
     {
-        SpriteRenderer renderer = GetComponent<SpriteRenderer>();
-        if (renderer == null)
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
         {
-            return;
+            if (renderers[i] != null)
+            {
+                renderers[i].enabled = false;
+            }
         }
-
-        renderer.color = respawnColor == PlayerColorState.White
-            ? new Color(0.85f, 0.95f, 1f)
-            : new Color(0.12f, 0.14f, 0.18f);
     }
 }

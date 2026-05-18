@@ -256,7 +256,7 @@ public class SpikeTilemap : MonoBehaviour
         PlayerController2D player = other.GetComponentInParent<PlayerController2D>();
         if (player != null)
         {
-            player.ResetToSpawn();
+            player.RespawnToSpawnWithParticles();
         }
     }
 

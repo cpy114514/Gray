@@ -20,12 +20,21 @@ public class MiniMapController2D : MonoBehaviour
     [SerializeField] private int textureHeight = 432;
     [SerializeField] private FilterMode filterMode = FilterMode.Point;
 
+    [Header("UI Resize")]
+    [SerializeField] private RectTransform minimapFrame;
+    [SerializeField] private bool applyDefaultUiSizeOnAwake = true;
+    [SerializeField] private bool enableMouseResize = true;
+    [SerializeField] private Vector2 defaultUiSize = new Vector2(340f, 191f);
+    [SerializeField] private Vector2 minUiSize = new Vector2(220f, 124f);
+    [SerializeField] private Vector2 maxUiSize = new Vector2(760f, 428f);
+
     private RenderTexture renderTexture;
 
     private void Awake()
     {
         CacheReferences();
         ConfigureCamera();
+        ConfigureUiResize();
         CreateRenderTexture();
         FindTargetIfNeeded();
     }
@@ -87,6 +96,11 @@ public class MiniMapController2D : MonoBehaviour
         {
             minimapImage = GetComponentInChildren<RawImage>(true);
         }
+
+        if (minimapFrame == null && minimapImage != null)
+        {
+            minimapFrame = minimapImage.transform.parent as RectTransform;
+        }
     }
 
     private void ConfigureCamera()
@@ -127,6 +141,22 @@ public class MiniMapController2D : MonoBehaviour
         renderTexture.Create();
         minimapCamera.targetTexture = renderTexture;
         minimapImage.texture = renderTexture;
+    }
+
+    private void ConfigureUiResize()
+    {
+        if (!enableMouseResize || minimapFrame == null)
+        {
+            return;
+        }
+
+        MiniMapMouseResize mouseResize = minimapFrame.GetComponent<MiniMapMouseResize>();
+        if (mouseResize == null)
+        {
+            mouseResize = minimapFrame.gameObject.AddComponent<MiniMapMouseResize>();
+        }
+
+        mouseResize.Configure(defaultUiSize, minUiSize, maxUiSize, applyDefaultUiSizeOnAwake);
     }
 
     private void FindTargetIfNeeded()

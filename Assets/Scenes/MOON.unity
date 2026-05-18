@@ -2647,6 +2647,7 @@ GameObject:
   - component: {fileID: 991261910}
   - component: {fileID: 991261909}
   - component: {fileID: 991261908}
+  - component: {fileID: 991261906}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -2654,6 +2655,34 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &991261906
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 991261907}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71754c7e92584e99bc5c6a1e5ead43f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  particleCount: 12
+  introDuration: 2.35
+  fallPhase: 0.64
+  groundHoldPhase: 0.18
+  startSpread: {x: 1.45, y: 0.65}
+  gatherSpread: 0.34
+  particleSizeRange: {x: 0.26, y: 0.41}
+  assembleSequencePortion: 0.68
+  assembleShakeDuration: 0.16
+  assembleShakeStrength: 0.055
+  finalAssemblyPopDuration: 0.26
+  finalAssemblyOvershoot: 1.14
+  landingBlockSize: {x: 2.1, y: 0.24}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!114 &991261908
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2689,9 +2718,9 @@ MonoBehaviour:
   turnSpeedThreshold: 2.6
   enableAfterimages: 1
   useBlockAfterimages: 1
-  afterimagePoolSize: 7
-  afterimageSpawnInterval: 0.045
-  afterimageLifetime: 0.22
+  afterimagePoolSize: 5
+  afterimageSpawnInterval: 0.065
+  afterimageLifetime: 0.14
   fallbackAfterimageBlockSize: {x: 1, y: 1}
   afterimageAlpha: 0.3
   shakeCamera: 1
@@ -5957,12 +5986,12 @@ Tilemap:
   m_TileMatrixArray:
   - m_RefCount: 280
     m_Data:
-      e00: 1
+      e00: 0.5
       e01: 0
       e02: 0
       e03: 0
       e10: 0
-      e11: 1
+      e11: 0.5
       e12: 0
       e13: 0
       e20: 0
@@ -6182,8 +6211,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 32, y: -32}
-  m_SizeDelta: {x: 520, y: 292}
+  m_AnchoredPosition: {x: 16, y: -16}
+  m_SizeDelta: {x: 340, y: 191}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &1375890554
 MonoBehaviour:
@@ -6294,7 +6323,7 @@ MonoBehaviour:
   m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 1920, y: 1080}
+  m_ReferenceResolution: {x: 1280, y: 720}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0.5
   m_PhysicalUnit: 3
@@ -6488,7 +6517,7 @@ Grid:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2111428794}
   m_Enabled: 1
-  m_CellSize: {x: 1, y: 1, z: 1}
+  m_CellSize: {x: 0.5, y: 0.5, z: 1}
   m_CellGap: {x: 0, y: 0, z: 0}
   m_CellLayout: 0
   m_CellSwizzle: 0
